@@ -6,3 +6,6 @@
 !GEMINI.md
 !rules/
 !rules/*.md
+!hooks/
+!hooks/*.ps1
+!settings.json

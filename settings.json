@@ -1,0 +1,30 @@
+{
+  "hooks": {
+    "BeforeTool": [
+      {
+        "matcher": "run_command|run_shell_command|shell|execute_command",
+        "hooks": [
+          {
+            "name": "safety-guard-commands",
+            "type": "command",
+            "command": "powershell -ExecutionPolicy Bypass -File \"$HOME/.gemini/hooks/safety-guard.ps1\"",
+            "timeout": 5000,
+            "description": "攔截危險 shell 指令（刪除、force push、敏感資訊外洩等）"
+          }
+        ]
+      },
+      {
+        "matcher": "write_file|write_to_file|replace_file_content|multi_replace_file_content|create_file",
+        "hooks": [
+          {
+            "name": "safety-guard-writes",
+            "type": "command",
+            "command": "powershell -ExecutionPolicy Bypass -File \"$HOME/.gemini/hooks/safety-guard.ps1\"",
+            "timeout": 5000,
+            "description": "偵測檔案寫入中的敏感資訊（API Key、密碼等）"
+          }
+        ]
+      }
+    ]
+  }
+}
