@@ -1,0 +1,8 @@
+# 預設忽略所有
+*
+
+# 只追蹤規則相關檔案
+!.gitignore
+!GEMINI.md
+!rules/
+!rules/*.md
