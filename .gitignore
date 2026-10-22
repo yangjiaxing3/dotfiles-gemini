@@ -1,11 +1,28 @@
 # 預設忽略所有
 *
 
-# 只追蹤規則相關檔案
+# 只追蹤規則與核心設定檔案
 !.gitignore
+!README.md
 !GEMINI.md
 !rules/
 !rules/*.md
 !hooks/
 !hooks/*.ps1
 !settings.json
+
+# 追蹤升級後之 /xlsx Skill 與四大開源公式引擎腳本 (排除 .venv 與 node_modules)
+!config/
+!config/skills/
+!config/skills/xlsx/
+!config/skills/xlsx/SKILL.md
+!config/skills/xlsx/README.md
+!config/skills/xlsx/LICENSE.txt
+!config/skills/xlsx/recalc.py
+!config/skills/xlsx/requirements.txt
+!config/skills/xlsx/package.json
+!config/skills/xlsx/references/
+!config/skills/xlsx/references/*.md
+!config/skills/xlsx/scripts/
+!config/skills/xlsx/scripts/*.py
+!config/skills/xlsx/scripts/*.js
