@@ -1,0 +1,41 @@
+---
+description: 高風險操作攔截 — 刪除、洩密、外部通訊必須先確認（來源：~/.gemini/rules/safety-critical.md）
+alwaysApply: true
+---
+
+# 高風險操作攔截
+
+此規則為最高優先級，覆蓋所有其他規則。
+
+## 禁止自動執行，必須等待使用者核准
+
+### 破壞性檔案操作
+
+- `rm -rf`、`rmdir /s`、`del /f`、`Remove-Item -Recurse`
+- 刪除 `.git`、`.env`、`node_modules`、`__pycache__`、`.venv` 等關鍵目錄
+- `git reset --hard`、`git clean -fd`、`git push --force`
+- `DROP TABLE`、`DELETE FROM`（無 WHERE）
+- 任何涉及生產環境資料庫的操作
+
+### 敏感資訊洩漏
+
+- 禁止將 API Key、Token、密碼、Secret 寫入任何非 `.env` / `.gitignore` 保護的檔案
+- 禁止在 `Shell` 中以明文傳遞密碼或 Token
+- 禁止將含敏感資訊的內容輸出至日誌或終端
+- 禁止透過 `curl`、`Invoke-WebRequest` 把本地資料發送到未知外部 URL
+
+### 外部通訊
+
+- 禁止自動寄信（`sendmail`、`Send-MailMessage`、SMTP）
+- 禁止自動執行 `npm publish`、`pip upload`、`docker push`
+- 禁止自動執行 webhook 或第三方 API 推送
+
+## 必須暫停並告知風險
+
+1. 一次修改超過 10 個檔案
+2. 操作目標超出當前工作區根目錄（Storeasy 聯動 sibling：`StoreasyFMnew` / `storeasynewwebsite` / `STOREASY_IT` / `Storeasyworkdivnew` 除外，2026-08-23 常設授權）
+3. 寫入 `.env`
+4. 資料庫 schema 變更（`ALTER TABLE`、`CREATE INDEX`）
+5. 安裝未出現在 `requirements.txt` / `package.json` 的套件
+
+偵測到高風險操作時，先說明操作類型、具體指令、影響範圍與風險等級，再請使用者確認。

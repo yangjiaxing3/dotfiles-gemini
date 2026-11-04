@@ -1,0 +1,27 @@
+---
+description: Storeasy 迷你倉與空間科技家族專屬業務鐵律、跨倉白名單與專屬 Skills（僅掛載於 Storeasy 家族）
+alwaysApply: true
+---
+
+# Storeasy 迷你倉 × 空間科技家族專屬規範
+
+> 適用專案：`StoreasyFMnew`, `Huanxin-3Dimen`, `storeasynewwebsite`, `storeasycws`, `STOREASY_IT`, `Storeasyworkdivnew`, `StoreasyFinHR`, `3Dstorage`, `storeasy-location-lens`, `storeasy_group_ordering`, `move-easy`。
+
+## 1. 不可妥協的核心業務鐵律 (Protected Domain Invariants)
+
+1. **空間幾何與 3D 模擬器公式**：
+   - 3D 物品擺放 (Bin Packing / Placement)、碰撞偵測 (Bounding Box / Raycasting)、視角投影、SketchUp (`.skp`) 轉多圖層 CAD (`.dxf/.dwg`) 迷你倉排櫃與空間座標轉換，**嚴禁簡化或刪除邊界檢查**。
+2. **財務、租金與月度維運請款核算**：
+   - **迷你倉營運指標**：實收租金、已出租材積、**每材實收**（`實收租金 ÷ 已出租材積`）與通路促銷分攤。
+   - **煥新科技 × 三維智能月費請款單 (`Huanxin-3Dimen`)**：
+     - 明細只作廢（`status = 'void'` 必填 `voidReason`）不刪除；每次修改必填原因並寫入 `.../history/rNNNNN`。
+     - SHA-256 雜湊鏈 `HASH_KEYS` 序列化規則不可變更；月費調整不溯及已開立請款單。
+     - `應付總額 ＝ 含稅小計加總 − 扣抵金額`；`銷售額 ＝ Math.round(應付總額 / 1.05)`；`營業稅 ＝ 應付總額 − 銷售額`。
+
+## 2. Storeasy 家族專屬領域 Skills（僅於本家族啟用）
+
+- `storeasy-mini-warehouse-viz`：迷你倉主管 D3 分析圖（實收租金 / 已出租材積 / 每材實收）
+- `storeasy-channel-operations`：Channel Manager 通路促銷發布、價格同步與官網回滾
+- `storeasy-seo-looping`：多據點迷你倉動態語意 SEO 迴圈（防禦門牌頁懲罰）
+- `skp-to-cad-ministorage`：SketchUp (`.skp`) 轉多圖層 CAD (`.dxf/.dwg`) 迷你倉排櫃
+- `storeasy-location-migration`：舊站迷你倉門市資料遷移與 SEO 重寫

@@ -1,0 +1,12 @@
+---
+description: 零區防禦、邊界哨兵、禁止瞎猜與測試防作弊（來源：~/.gemini/GEMINI.md）
+alwaysApply: true
+---
+
+# 零區防禦與安全原則
+
+- 永遠不信任客戶端輸入，敏感操作必須經過權限校驗。
+- **防越界強制攔截**：在呼叫終端機工具（Cursor: `Shell`）、寫入或修改檔案**之前**，若當前專案存在 `.agents/workflows/boundary-sentinel.md`（或舊版 `.agent/workflows/boundary-sentinel.md`），必須先讀取並遵循。
+- **禁止自作主張**：若執行目標路徑不屬於當前唯一確定的工作區，或遇報錯／路徑遺失時，**嚴禁**擅自切換至使用者開啟的其他專案目錄中探索。必須立即暫停並向使用者提問。
+- **Storeasy 聯動例外（2026-08-23 常設授權）**：當前工作區屬於 `StoreasyFMnew` / `storeasynewwebsite` / `STOREASY_IT` / `Storeasyworkdivnew` 時，允許直接讀寫並驗證這些 sibling repo，不必再問。不含無關專案，也不放寬 secrets／生產 DB 破壞性操作。
+- **測試防作弊**：絕對禁止透過刪除斷言、弱化測試條件、加上 `@skip` 或用 `try/catch` 壓抑錯誤來讓測試通過。必須修復程式碼邏輯，而不是修復計分板。若同一個錯誤連續出現 2 次，代表正在瞎猜，必須立刻停止，禁止盲目修改。

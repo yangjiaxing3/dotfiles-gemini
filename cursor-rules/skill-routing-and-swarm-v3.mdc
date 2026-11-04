@@ -1,0 +1,58 @@
+---
+description: Ruflo Swarm V3 多代理模型路由、雙產業感知 (Storeasy vs US3C) Role-Scoped 動態技能矩陣與確定性路由協議（支援 Cursor Cloud Agents 與本機）
+alwaysApply: true
+---
+
+# Ruflo Swarm V3 & 雙產業感知 Agent Skills 確定性路由協議 (Cursor Cloud Agents & Local 雙棲版)
+
+> 本規則同時適用於 **Cursor Cloud Agents（雲端 Linux 容器 `/workspace`）**、**本機 Cursor** 與 **Antigravity**。
+
+## 1. 雙產業專屬 Skills 物理隔離與三層漸進式載入 (Progressive Disclosure)
+
+系統已依產業屬性將 Skills 分流同步至各專案 Git 倉庫（`.agents/skills/` 與 `.cursor/skills/`），杜絕跨行業 Context 污染：
+- **🏢 Storeasy 迷你倉與空間科技家族**：掛載通用底座 ＋ Storeasy 專屬技能（`storeasy-mini-warehouse-viz`, `storeasy-channel-operations`, `storeasy-seo-looping`, `skp-to-cad-ministorage`, `storeasy-location-migration`）。
+- **📱 US3C 二手 3C 回收與智慧機台家族**：掛載通用底座 ＋ US3C 專屬技能（`us3c-tradein-margin-pricing`, `us3c-kiosk-driver-ops`, `us3c-imcheck-device-qc`, `us3c-seo-loop`, `us3c-swarm`, `skillorchestrator`, `agent-reach`, `social-listening-brief`, `kiosk-image-optimizer`, `sop-lesson`, `typesafe-ai`, `jev-typesafe`, `autojev*`）。
+
+### 呼叫與載入規範：
+1. **三層漸進式載入**：
+   - **第 1 層 (`Metadata`)**：`description <= 140` 字元，含 `Use when` 主動觸發條件與繁中雙語錨點。
+   - **第 2 層 (`SKILL.md Body`)**：`< 250` 行，含核心推理步驟與 `## ⚠️ Gotchas (避坑指南)`。先用 `Read` 讀取 `.agents/skills/<name>/SKILL.md` 或 `.cursor/skills/<name>/SKILL.md`。
+   - **第 3 層 (`references/detailed-guide.md` & `scripts/`)**：僅在需要詳細模板時按需 `Read`。
+2. **確定性百級技能路由器 (`scripts/skill_router.py`)**：
+   ```bash
+   python scripts/skill_router.py route "<使用者指令>"
+   python scripts/multi_model_gate.py plan-skills --prompt "<任務描述>"
+   ```
+3. **[CRITICAL OVERRIDE] Plan 與 Mermaid 圖表強制調用 `/diagram-design` 協議**：
+   - 凡撰寫或更新任何 **Plan / 架構文件** 且涉及 **`Mermaid` 圖、架構圖、資料流圖、時序圖或 ER 圖**時，強制讀取並遵循 `.agents/skills/diagram-design/SKILL.md`（單圖 `nodes <= 9, edges <= 12`、繁體中文 `12px Noto Sans TC`、同步產出 HTML + SVG + `@2x` PNG 並通過 `self_check.py`）。
+
+## 2. Ruflo Swarm V3 多代理模型分工矩陣 (2026 專業特化雙軌制)
+
+- **Phase 0 (`🛡️ Agent 0` 零區安全守門員)**：**`deepseek-flash`**（協同：`gemini-4-argon`）
+- **Phase 1 (`🧠 Agent A` 知識圖譜與架構發想)**：**`gemini-4-argon`**（協同：`deepseek-flash`）
+- **Phase 2 (`😈 Agent B` 魔鬼代言人紅隊批判)**：**`grok-4.7`**（協同：TypeSafe `jev-1.13.0` 量化風險校準）
+- **Phase 3 (`⚖️ Agent C` 意見整合與決策收斂)**：**`gemini-4-argon`** / **`qwen-3.8-max`**
+- **Phase 4 (`🛠️ Agent D` 實作工蜂 & Fixer 除錯救援)**：日常快改 **`deepseek-flash`**；跨模組核心重構或**連續 2 次失敗觸發 Fixer** 強制升級 **`qwen-3.8-max`**
+- **Phase 5 (`🔍 Agent E` 驗屍官 & 終審 QA)**：**`deepseek-flash` + `grok-4.7`** + **`gemini-4-argon`**（視覺與多模態 E2E）
+
+## 3. 角色 × 任務 × 產業領域動態技能綁定 (Industry-Aware Role-Scoped Skill Matrix)
+
+`scripts/multi_model_gate.py` 會自動偵測當前專案所屬產業家族（`storeasy` vs `us3c`）與任務領域，為每個角色動態掛載精準技能：
+
+- **`🛡️ Agent 0` (`deepseek-flash`)**：基底 `[accidental-data-loss-prevention, stage-gate-review]` ＋ 任務技能（`debug`: `fixer-prompt, agent-tester`；`backend_api`: `security-audit, agency-testing-api-tester`）。
+- **`🧠 Agent A` (`gemini-4-argon`)**：基底 `[graphify, ponytail-audit]` ＋ 隨產業與任務切換：
+  - **數據分析 (`data_analysis`)**：
+    - Storeasy 家族：`[storeasy-mini-warehouse-viz, agency-data-consolidation-agent, d3-data-visualization]`
+    - US3C 家族：`[us3c-tradein-margin-pricing, agency-data-consolidation-agent, d3-data-visualization]`
+  - **SEO / 內容 (`seo_content`)**：
+    - Storeasy 家族：`[storeasy-seo-looping, agency-marketing-data-seo-engineer, agency-marketing-geo-aeo-specialist]`
+    - US3C 家族：`[us3c-seo-loop, agent-reach, agency-marketing-geo-aeo-specialist]`
+  - **營運 / 機台 / 後端 (`ops_management` / `backend_api`)**：
+    - Storeasy 家族：`[storeasy-channel-operations, agency-engineering-backend-architect, agency-testing-workflow-optimizer]`
+    - US3C 家族：`[us3c-kiosk-driver-ops, us3c-imcheck-device-qc, us3c-swarm]`
+- **`😈 Agent B` (`grok-4.7` 紅隊挑刺)**：基底 `[ponytail-review, agency-engineering-code-reviewer]` ＋ 隨產業與任務切換：
+  - `data_analysis`：Storeasy 掛載 `storeasy-mini-warehouse-viz, xlsx`；US3C 掛載 `us3c-tradein-margin-pricing, agency-sales-data-extraction-agent, xlsx`（專抓出庫冒充營收、`n<15` 誤給收購上限）。
+  - `seo_content`：Storeasy 掛載 `storeasy-seo-looping, content-quality-auditor`；US3C 掛載 `us3c-seo-loop, social-listening-brief, content-quality-auditor`（專抓三站關鍵字競食）。
+  - `ops_management`：US3C 掛載 `us3c-kiosk-driver-ops, critical-stress-test`（專抓 `L1~L4` 異常單未同步 `us3cdriverapp`）。
+- **`⚖️ Agent C & 🛠️ Agent D` (`qwen-3.8-max`)**：基底 `[ponytail, decisions-governance]` ＋ 產業實作技能（如 US3C 掛載 `us3c-tradein-margin-pricing, sop-lesson, skillorchestrator`；前端掛載 `impeccable, emil-design-eng`）。
+- **`🔍 Agent E` (終審 QA)**：`[agent-desktop, webapp-testing, verification-quality]`。

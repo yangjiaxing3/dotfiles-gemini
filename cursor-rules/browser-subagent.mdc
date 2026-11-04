@@ -1,0 +1,10 @@
+---
+description: Browser 子代理分段執行，避免 token 溢出（來源：~/.gemini/GEMINI.md）
+alwaysApply: true
+---
+
+# Browser Subagent 截斷守則
+
+- **單次互動限制**：指派 Browser Subagent 進行 UI 驗證時，單次任務內不得包含超過 20 次點擊或導航步驟。
+- **分段式執行**：流程若超過 15 個步驟，必須強迫 Subagent「完成階段操作後立即擷圖並返回」。主 Agent 確認後，再發動下一輪接續操作。
+- **目的**：避免回傳過長互動記錄與圖片，導致 generation exceeded max tokens limit。

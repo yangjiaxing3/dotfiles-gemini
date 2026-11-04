@@ -1,0 +1,32 @@
+---
+description: US3C 二手 3C 回收、智慧回收機台 (BUNNIT/R3)、iMCheck 驗機與司機取件家族專屬業務鐵律與 Skills（僅掛載於 US3C 家族）
+alwaysApply: true
+---
+
+# US3C 二手 3C 回收 × 智慧機台家族專屬規範
+
+> 適用專案：`us3c-next`, `711us3cwebsite`, `msi_us3c_recycle`, `us3cdriverapp`, `us3cwebsite-env`, `us3c_mvp`, `usdwarrantynew`, `iMCheck`, `logistic_driver`, `price_crawler`, `Yangbiz`。
+
+## 1. 不可妥協的核心業務鐵律 (Protected Domain Invariants)
+
+1. **二手 3C 估價、收購定價尺與銷售毛利觀測 (`MarginObsBoard`)**：
+   - `銷售毛利 ＝ 售出價格 − 實際收購與整新成本`；未售出 CSV 差分或倉儲出庫僅能報「**出庫成本**」，**嚴禁冒充售出營收或編造 GMV**。
+   - **目標毛利率滑桿（`0%–60%`）**僅改變未來收購假設與收購上限，絕不重寫已售出事實；當單一品類成交樣本數 **`n < 15` 時，禁止給出收購上限**。
+   - 儀表板大數預設以**萬**為單位（`Money` / `formatWan`）；`RoleGlance` 快照未就緒或欄位缺失時顯示灰色缺值提示，**嚴禁補 `0`**。
+2. **R3 智慧回收機台 5 大生命週期 API 與司機巡檢雙倉同輪修改鐵律**：
+   - 5 大 API 閉環：機台清單大盤 → R3 待處理訂單 → Securaze 抹除與 iMCheck 檢測 → Kiosk 雙視角相機 AI 損傷判定 → 最終鑑定報告（含 MD5 Checksum）。
+   - **異常單 `L1~L4` vs 巡視步驟 `S1~S4`**：檢查結果與 `machine_incidents.severity` 全面使用 **`L1`（停機/安全）～`L4`（正常/僅記錄）**；巡視步驟維持 **`S1~S4`**。修改異常單或巡視評等時，**必須同一輪同步修改 `us3c-next` 與 `us3cdriverapp`**。
+3. **iMCheck 驗機質檢 (`QC`) 與黑名單 (`/blacklist`) 跨庫治理**：
+   - `/blacklist` 經由 `imcheck-blacklist` Edge Function 讀寫 `www.imcheck.com.tw` (Neon DB)，權限鎖定 `rbac:read` Admin；欄位更新用 `PATCH`、狀態變更用 `POST`。
+4. **US3C 三站 SEO 關鍵字防競食法典 (Anti-Cannibalization)**：
+   - `imcheck.com.tw` 獨佔泛詞（`手機回收`、`二手手機回收`、`24H手機回收機`、`手機線上估價`）與機台據點頁；`us3c.com.tw` 專攻品牌/機型長尾（如 `iPhone 16 回收`）與門市據點；`711us3cwebsite` 僅限超商寄件詞。
+
+## 2. US3C 家族專屬領域 Skills（僅於本家族啟用）
+
+- `us3c-tradein-margin-pricing`：二手 3C 舊換新估價、收購定價尺 (`n<15` 保護) 與 `MarginObsBoard` 毛利觀測
+- `us3c-kiosk-driver-ops`：24H 智慧回收機台 5 大 API、`L1~L4` 異常單與 `us3cdriverapp` 司機取件聯動
+- `us3c-imcheck-device-qc`：iMCheck 手機硬體檢測、Securaze 資料抹除、到貨 QC 5 級庫位與 `/blacklist` 治理
+- `us3c-seo-loop` / `us3c-swarm` / `skillorchestrator`：二手 3C 回收 3D SEO 飛輪、冷熱庫與多技能調度
+- `agent-reach` / `social-listening-brief`：BUNNIT / iMT / 手機回收 PTT/Threads 社群聲量抓取與 Jev 量化篩選
+- `kiosk-image-optimizer` / `sop-lesson`：智慧回收機照片 WebP 壓縮與門市/驗機 SOP 旁註教學
+- `typesafe-ai` / `jev-typesafe` / `autojev*`：TypeSafe System One (`Jev`) Choice / Score / Noul 量化校準工具鏈

@@ -1,0 +1,13 @@
+---
+description: 異常單與巡視評等用 L1～L4；必須與 us3cdriverapp 同一輪改 UI 與 payload。
+globs: src/features/machines/**/*.{ts,tsx}
+alwaysApply: false
+---
+
+# 異常單 L1～L4 聯動 us3cdriverapp
+
+權威記憶：`C:\Users\Jiaxing\.gemini\memory\us3c_linked_repos_and_incident_l_grades.md`
+
+- 檢查項評等與 `machine_incidents.severity` 用 **L1～L4**。官方 HTML 的 S 只是 demo。
+- **S2／S3 只表示巡視步驟分組**，不是嚴重程度。
+- 改後台異常單或評等時，必須一併改 `C:\Users\Jiaxing\Documents\GitHub\us3cdriverapp` 的巡視 UI 與寫入 `severity` 的資料。禁止只改一邊。

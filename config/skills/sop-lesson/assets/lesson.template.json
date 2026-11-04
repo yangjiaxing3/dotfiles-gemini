@@ -1,0 +1,58 @@
+{
+  "brand": "US3C / iMCheck",
+  "title": "通路端 iMCheck 1–5",
+  "steps": [
+    {
+      "image": "/sop-demo/02.jpg",
+      "title": "開啟估價頁面",
+      "narration": "進估價頁，準備開這筆單。",
+      "dwellMs": 3600,
+      "zoomScale": 1.18,
+      "recipe": {
+        "version": 1,
+        "operations": [
+          {
+            "type": "rectangle",
+            "id": "quote-tab",
+            "rect": { "x": 0.238, "y": 0.8934, "width": 0.128, "height": 0.0697 },
+            "zoom": true,
+            "highlight": true
+          },
+          {
+            "type": "callout",
+            "id": "quote-tab-label",
+            "targetId": "quote-tab",
+            "text": "點估價",
+            "side": "top"
+          }
+        ]
+      }
+    },
+    {
+      "image": "/sop-demo/03.jpg",
+      "title": "選擇檢測類別",
+      "narration": "依客人裝置選檢測類別，例如 iPhone。",
+      "dwellMs": 3600,
+      "zoomScale": 1.18,
+      "recipe": {
+        "version": 1,
+        "operations": [
+          {
+            "type": "rectangle",
+            "id": "ios-check",
+            "rect": { "x": 0.0602, "y": 0.673, "width": 0.1185, "height": 0.091 },
+            "zoom": true,
+            "highlight": true
+          },
+          {
+            "type": "callout",
+            "id": "ios-check-label",
+            "targetId": "ios-check",
+            "text": "選 iPhone 檢測",
+            "side": "right"
+          }
+        ]
+      }
+    }
+  ]
+}

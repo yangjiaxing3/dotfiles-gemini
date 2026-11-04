@@ -5,10 +5,12 @@ globs: ["**/*.test.*", "**/*.spec.*", "**/test_*", "**/__tests__/**", "**/tests/
 
 # 測試規範
 
-## TDD 流程
+## TDD 流程與自動化迴圈 (Autonomous Loop)
 
 - 遵循 RED → GREEN → REFACTOR 循環
-- 先寫失敗測試，再寫最小實作，最後重構
+- **自動化執行**：撰寫測試與實作代碼後，AI 必須主動執行 `run_command` (例如 `npm test` 或 `pytest`)，自行讀取錯誤並修復。
+- **邊界限制 (Bounded Loop)**：最多自我循環 5 次。若超過上限或連續出現同樣的錯誤 2 次，必須立即中止，不允許盲猜。
+- **防作弊機制 (Anti-Cheating)**：嚴禁為了通過測試而刪除斷言 (assertions)、弱化驗證條件或使用 `@skip`。
 
 ## 測試結構
 

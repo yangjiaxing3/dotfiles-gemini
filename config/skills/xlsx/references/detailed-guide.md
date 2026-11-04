@@ -1,84 +1,163 @@
-# xlsx — Detailed Reference, Multi-Engine Hub & Extended Examples
+# xlsx — Detailed Reference & Extended Examples
 
 ## Common Workflow
-1. **Choose tool**: `pandas` for bulk tabular analysis, `openpyxl` for workbook construction/formatting, `xlwings`/`win32com` for live Excel COM interaction.
-2. **Design DAG & Helper Columns**: Decompose complex multi-condition accounting/statistical formulas into clear intermediate columns.
-3. **Save workbook**: Write `.xlsx` to disk.
-4. **Recalculate & Lint formulas (MANDATORY IF USING FORMULAS)**:
-   ```powershell
-   & "C:\Users\Jiaxing\.gemini\config\skills\xlsx\.venv\Scripts\python.exe" "C:\Users\Jiaxing\.gemini\config\skills\xlsx\recalc.py" output.xlsx
+1. **Choose tool**: pandas for data, openpyxl for formulas/formatting
+2. **Create/Load**: Create new workbook or load existing file
+3. **Modify**: Add/edit data, formulas, and formatting
+4. **Save**: Write to file
+5. **Recalculate formulas (MANDATORY IF USING FORMULAS)**: Use the recalc.py script
+   ```bash
+   python recalc.py output.xlsx
    ```
-5. **Inspect DAG Topology & Hotspots (for complex multi-sheet models)**:
-   ```powershell
-   & "C:\Users\Jiaxing\.gemini\config\skills\xlsx\.venv\Scripts\python.exe" "C:\Users\Jiaxing\.gemini\config\skills\xlsx\scripts\formula_engine_hub.py" dag output.xlsx
-   ```
-6. **Verify and fix any errors**:
-   - Check `total_errors == 0` and `uncached_formula_count == 0`.
-   - Review `static_analysis` for `unprefixed_modern_functions`, `blind_iferror_Warning_locations`, and `sumifs_inequality_coercion_check`.
+6. **Verify and fix any errors**: 
+   - The script returns JSON with error details
+   - If `status` is `errors_found`, check `error_summary` for specific error types and locations
+   - Fix the identified errors and recalculate again
+   - Common errors to fix:
+     - `#REF!`: Invalid cell references
+     - `#DIV/0!`: Division by zero
+     - `#VALUE!`: Wrong data type in formula
+     - `#NAME?`: Unrecognized formula name
 
----
-
-## Multi-Engine Command Reference (`scripts/formula_engine_hub.py` & `hyperformula_eval.js`)
-
-### 1. Recalculation + Auto `_xlfn.` Fixer (`recalc.py`)
-- On Windows, automatically invokes native Excel 16.0 COM (`CalculateFullRebuild()`) to compute and persist `<v>` cached values for every formula cell.
-- Automatically prefixes modern Excel 365 functions (`XLOOKUP` $\rightarrow$ `_xlfn.XLOOKUP`, `FILTER` $\rightarrow$ `_xlfn._xlws.FILTER`, `LET` $\rightarrow$ `_xlfn.LET`) before recalculation.
-- Falls back to LibreOffice (`soffice --headless`) or `vinci1it2000/formulas` when Excel COM is unavailable.
-
-### 2. Workbook DAG & Circular Reference Analyzer (`formula_engine_hub.py dag`)
-```powershell
-& "C:\Users\Jiaxing\.gemini\config\skills\xlsx\.venv\Scripts\python.exe" "C:\Users\Jiaxing\.gemini\config\skills\xlsx\scripts\formula_engine_hub.py" dag model.xlsx
-```
-Returns JSON containing:
-- `total_formula_cells`, `dag_nodes`, `dag_edges`
-- `is_acyclic_dag` and `circular_references`
-- `max_topological_depth` (measures formula nesting/chain complexity)
-- `sheet_dependencies` (e.g., `["01_整合轉換明細 -> 03_傳票借貸與跨店調節表"]`)
-- `top_dependency_hotspots` (ranges/cells with highest fan-out)
-
-### 3. Headless What-If Unit Testing (`formula_engine_hub.py eval`)
-Powered by `bradbase/xlcalculator` (`v0.5.0`), allowing automated unit tests on Excel formulas by injecting cell overrides in memory:
-```powershell
-& "C:\Users\Jiaxing\.gemini\config\skills\xlsx\.venv\Scripts\python.exe" "C:\Users\Jiaxing\.gemini\config\skills\xlsx\scripts\formula_engine_hub.py" eval model.xlsx "Sheet1!D10" --set "Sheet1!A2=1050"
-```
-
-### 4. OOXML `_xlfn.` Formula Translator (`formula_engine_hub.py xlfn`)
-```powershell
-& "C:\Users\Jiaxing\.gemini\config\skills\xlsx\.venv\Scripts\python.exe" "C:\Users\Jiaxing\.gemini\config\skills\xlsx\scripts\formula_engine_hub.py" xlfn "=LET(x, XLOOKUP(A2, B:B, C:C), FILTER(D:D, D:D>x))"
-```
-
-### 5. High-Speed Node.js Headless Formula Engine (`scripts/hyperformula_eval.js`)
-Powered by `handsontable/hyperformula` (`v3.5.0`, 423 functions) and `@ironcalc/wasm`:
-```powershell
-node "C:\Users\Jiaxing\.gemini\config\skills\xlsx\scripts\hyperformula_eval.js" '{"Sheet1": [[105, "=ROUND(A1/1.05, 0)", "=A1-B1", "=B1+C1"]]}'
-```
-
----
-
-## Creating and Editing Excel Files with `openpyxl`
+### Creating new Excel files
 
 ```python
+# Using openpyxl for formulas and formatting
 from openpyxl import Workbook
 from openpyxl.styles import Font, PatternFill, Alignment
 
 wb = Workbook()
 sheet = wb.active
 
-sheet['A1'] = 'Gross Amount'
-sheet['B1'] = 'Net Principal'
-sheet['C1'] = 'Tax (5% Plug)'
+# Add data
+sheet['A1'] = 'Hello'
+sheet['B1'] = 'World'
+sheet.append(['Row', 'of', 'data'])
 
-sheet['A2'] = 105
-sheet['B2'] = '=ROUND(A2/1.05, 0)'
-sheet['C2'] = '=A2-B2'
+# Add formula
+sheet['B2'] = '=SUM(A1:A10)'
+
+# Formatting
+sheet['A1'].font = Font(bold=True, color='FF0000')
+sheet['A1'].fill = PatternFill('solid', start_color='FFFF00')
+sheet['A1'].alignment = Alignment(horizontal='center')
+
+# Column width
+sheet.column_dimensions['A'].width = 20
 
 wb.save('output.xlsx')
 ```
 
+### Editing existing Excel files
+
+```python
+# Using openpyxl to preserve formulas and formatting
+from openpyxl import load_workbook
+
+# Load existing file
+wb = load_workbook('existing.xlsx')
+sheet = wb.active  # or wb['SheetName'] for specific sheet
+
+# Working with multiple sheets
+for sheet_name in wb.sheetnames:
+    sheet = wb[sheet_name]
+    print(f"Sheet: {sheet_name}")
+
+# Modify cells
+sheet['A1'] = 'New Value'
+sheet.insert_rows(2)  # Insert row at position 2
+sheet.delete_cols(3)  # Delete column 3
+
+# Add new sheet
+new_sheet = wb.create_sheet('NewSheet')
+new_sheet['A1'] = 'Data'
+
+wb.save('modified.xlsx')
+```
+
+## Recalculating formulas
+
+Excel files created or modified by openpyxl contain formulas as strings but not calculated values. Use the provided `recalc.py` script to recalculate formulas:
+
+```bash
+python recalc.py <excel_file> [timeout_seconds]
+```
+
+Example:
+```bash
+python recalc.py output.xlsx 30
+```
+
+The script:
+- Automatically sets up LibreOffice macro on first run
+- Recalculates all formulas in all sheets
+- Scans ALL cells for Excel errors (#REF!, #DIV/0!, etc.)
+- Returns JSON with detailed error locations and counts
+- Works on both Linux and macOS
+
 ## Formula Verification Checklist
 
+Quick checks to ensure formulas work correctly:
+
 ### Essential Verification
-- [ ] **Zero errors after `recalc.py`**: `total_errors == 0` and `uncached_formula_count == 0`
-- [ ] **DAG acyclic check**: `is_acyclic_dag == true` via `formula_engine_hub.py dag`
-- [ ] **No blind `IFERROR`**: Use explicit guard conditions (`=IF(L2="否", 0, ...)`) so real structural errors are never silently swallowed
-- [ ] **Avoid `SUMIFS` numeric-string `<>` coercion**: When comparing text-formatted numeric codes (like `"1112003"`), avoid `"<>"&Cell` in `SUMIFS`; subtract the equality match from the total instead
+- [ ] **Test 2-3 sample references**: Verify they pull correct values before building full model
+- [ ] **Column mapping**: Confirm Excel columns match (e.g., column 64 = BL, not BK)
+- [ ] **Row offset**: Remember Excel rows are 1-indexed (DataFrame row 5 = Excel row 6)
+
+### Common Pitfalls
+- [ ] **NaN handling**: Check for null values with `pd.notna()`
+- [ ] **Far-right columns**: FY data often in columns 50+ 
+- [ ] **Multiple matches**: Search all occurrences, not just first
+- [ ] **Division by zero**: Check denominators before using `/` in formulas (#DIV/0!)
+- [ ] **Wrong references**: Verify all cell references point to intended cells (#REF!)
+- [ ] **Cross-sheet references**: Use correct format (Sheet1!A1) for linking sheets
+
+### Formula Testing Strategy
+- [ ] **Start small**: Test formulas on 2-3 cells before applying broadly
+- [ ] **Verify dependencies**: Check all cells referenced in formulas exist
+- [ ] **Test edge cases**: Include zero, negative, and very large values
+
+### Interpreting recalc.py Output
+The script returns JSON with error details:
+```json
+{
+  "status": "success",           // or "errors_found"
+  "total_errors": 0,              // Total error count
+  "total_formulas": 42,           // Number of formulas in file
+  "error_summary": {              // Only present if errors found
+    "#REF!": {
+      "count": 2,
+      "locations": ["Sheet1!B5", "Sheet1!C10"]
+    }
+  }
+}
+```
+
+## Best Practices
+
+### Library Selection
+- **pandas**: Best for data analysis, bulk operations, and simple data export
+- **openpyxl**: Best for complex formatting, formulas, and Excel-specific features
+
+### Working with openpyxl
+- Cell indices are 1-based (row=1, column=1 refers to cell A1)
+- Use `data_only=True` to read calculated values: `load_workbook('file.xlsx', data_only=True)`
+- **Warning**: If opened with `data_only=True` and saved, formulas are replaced with values and permanently lost
+- For large files: Use `read_only=True` for reading or `write_only=True` for writing
+- Formulas are preserved but not evaluated - use recalc.py to update values
+
+### Working with pandas
+- Specify data types to avoid inference issues: `pd.read_excel('file.xlsx', dtype={'id': str})`
+- For large files, read specific columns: `pd.read_excel('file.xlsx', usecols=['A', 'C', 'E'])`
+- Handle dates properly: `pd.read_excel('file.xlsx', parse_dates=['date_column'])`
+
+## Code Style Guidelines
+**IMPORTANT**: When generating Python code for Excel operations:
+- Write minimal, concise Python code without unnecessary comments
+- Avoid verbose variable names and redundant operations
+- Avoid unnecessary print statements
+
+**For Excel files themselves**:
+- Add comments to cells with complex formulas or important assumptions
+- Document data sources for hardcoded values
+- Include notes for key calculations and model sections

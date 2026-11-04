@@ -1,0 +1,220 @@
+{
+  "meta": {
+    "description": "Agent Skills 路由命中率基準測試集 (60% Train / 40% Test Split，含 Storeasy 迷你倉與 US3C 二手 3C 雙產業)",
+    "total_queries": 35,
+    "train_count": 21,
+    "test_count": 14
+  },
+  "queries": [
+    {
+      "id": "Q01",
+      "split": "train",
+      "query": "請啟動多 Agent 模式，幫我針對這個架構做紅隊挑刺與辯證",
+      "expected_skills": ["multi-agent-mode", "agency-agents-orchestrator"]
+    },
+    {
+      "id": "Q02",
+      "split": "train",
+      "query": "同一個 pytest 錯誤已經連續出現 3 次修不好，陷入死循環，請叫 Fixer 出來從零診斷",
+      "expected_skills": ["fixer-prompt"]
+    },
+    {
+      "id": "Q03",
+      "split": "train",
+      "query": "幫我查一下這個專案的架構跟 Order 節點與哪些檔案有關聯",
+      "expected_skills": ["graphify", "agency-engineering-codebase-onboarding-engineer"]
+    },
+    {
+      "id": "Q04",
+      "split": "train",
+      "query": "我要調整迷你倉主管分析圖，同時比較各分店每個季度的實收租金、已出租材積與每材實收",
+      "expected_skills": ["storeasy-mini-warehouse-viz", "d3-data-visualization"]
+    },
+    {
+      "id": "Q05",
+      "split": "train",
+      "query": "幫我把這篇中文文案裡面的 AI 生成痕跡、破折號跟三段式排比修掉，改得像真人寫的",
+      "expected_skills": ["humanizer", "humanizer-zh-tw"]
+    },
+    {
+      "id": "Q06",
+      "split": "train",
+      "query": "我們準備結束今天的開發 session，幫我做 handoff 紀錄保存進度",
+      "expected_skills": ["session-handoff"]
+    },
+    {
+      "id": "Q07",
+      "split": "train",
+      "query": "這個階段 P0-1 寫完了，請用三個不同技能角色做 stage-gate 懷疑式程式碼審查",
+      "expected_skills": ["stage-gate-review", "agency-engineering-code-reviewer"]
+    },
+    {
+      "id": "Q08",
+      "split": "train",
+      "query": "幫我檢查 StoreasyFMnew 的 Channel Manager 促銷活動發布到官網的價格同步與回滾流程",
+      "expected_skills": ["storeasy-channel-operations"]
+    },
+    {
+      "id": "Q09",
+      "split": "train",
+      "query": "針對 iPhone 與 MacBook 二手回收頁面，啟動 Swarm 協調器同時調度多個 SEO 與文案技能",
+      "expected_skills": ["skillorchestrator", "us3c-seo-loop"]
+    },
+    {
+      "id": "Q10",
+      "split": "train",
+      "query": "這個頁面的自然搜尋排名突然掉了，幫我做單頁 on-page SEO 審計，檢查 H1、Title 跟內鏈",
+      "expected_skills": ["on-page-seo-auditor", "seo-audit"]
+    },
+    {
+      "id": "Q11",
+      "split": "train",
+      "query": "我們網站有哪些孤島頁面 (orphan pages)？請幫我規劃站內連結與錨點文字權重流動",
+      "expected_skills": ["internal-linking-optimizer"]
+    },
+    {
+      "id": "Q12",
+      "split": "train",
+      "query": "幫我設計一個新的 FastAPI 後端服務，需要非同步依賴注入、資料庫架構設計與統一錯誤處理",
+      "expected_skills": ["fastapi-templates", "agency-engineering-backend-architect", "agent-dev-backend-api"]
+    },
+    {
+      "id": "Q13",
+      "split": "train",
+      "query": "這個 SQL 查詢在 PostgreSQL / Turso 跑太慢了，幫我分析索引策略跟 Schema 正規化",
+      "expected_skills": ["agency-engineering-database-optimizer"]
+    },
+    {
+      "id": "Q14",
+      "split": "train",
+      "query": "幫我美化這個 React Dashboard 介面，改善視覺層次、字體排版與微互動，不要長得像廉價 AI 模板",
+      "expected_skills": ["impeccable", "frontend-design", "design-taste-frontend", "agency-design-ui-designer"]
+    },
+    {
+      "id": "Q15",
+      "split": "train",
+      "query": "在執行這條會刪除資料表的 DROP TABLE / DELETE SQL 指令之前，先確認資料防誤刪安全保護",
+      "expected_skills": ["accidental-data-loss-prevention"]
+    },
+    {
+      "id": "Q16",
+      "split": "train",
+      "query": "幫我用 Playwright 自動打開本地前端網頁做 UI 測試並截圖檢查 console 報錯",
+      "expected_skills": ["webapp-testing", "browser-act"]
+    },
+    {
+      "id": "Q17",
+      "split": "train",
+      "query": "把這批門市與 24H 自助回收機的照片自動縮圖、壓縮並轉成 250KB 以下的 WebP 格式",
+      "expected_skills": ["kiosk-image-optimizer"]
+    },
+    {
+      "id": "Q18",
+      "split": "train",
+      "query": "請幫這篇文章產生 FAQ 與 LocalBusiness 的 JSON-LD 結構化資料標記",
+      "expected_skills": ["schema-markup-generator"]
+    },
+    {
+      "id": "Q19",
+      "split": "test",
+      "query": "怎麼讓 ChatGPT、Perplexity 跟 Google AI Overviews 更容易引用我們網站的內容？",
+      "expected_skills": ["geo-content-optimizer", "entity-optimizer"]
+    },
+    {
+      "id": "Q20",
+      "split": "test",
+      "query": "把這個 SketchUp (.skp) 模型轉成迷你倉多圖層 CAD (.dxf/.dwg) 並自動排櫃位",
+      "expected_skills": ["skp-to-cad-ministorage"]
+    },
+    {
+      "id": "Q21",
+      "split": "test",
+      "query": "幫我匯出財務對帳報表為帶有公式、千分位格式與自動統計分頁的 Excel (.xlsx) 檔案",
+      "expected_skills": ["xlsx"]
+    },
+    {
+      "id": "Q22",
+      "split": "test",
+      "query": "我們要串接第三方 API 建立一個新的 MCP Server (FastMCP / TypeScript SDK)，請給我最佳實踐指引",
+      "expected_skills": ["mcp-builder"]
+    },
+    {
+      "id": "Q23",
+      "split": "test",
+      "query": "檢查這個 React 元件有沒有違反無障碍 WCAG 標準，包含鍵盤導航與螢幕閱讀器支援",
+      "expected_skills": ["agency-testing-accessibility-auditor", "web-design-guidelines"]
+    },
+    {
+      "id": "Q24",
+      "split": "test",
+      "query": "幫我重構這個滿是 boolean props 的 React 元件，改用 Compound Components 複合元件模式與 React 19 API",
+      "expected_skills": ["vercel-composition-patterns", "composition-patterns", "vercel-react-best-practices"]
+    },
+    {
+      "id": "Q25",
+      "split": "test",
+      "query": "我們要用 Inngest 或 Temporal 設計具備失敗重試與持久化執行的多步驟背景工作流",
+      "expected_skills": ["workflow-automation"]
+    },
+    {
+      "id": "Q26",
+      "split": "test",
+      "query": "幫我提取這份多頁工程報價 PDF 裡面的表格與文字，或是把多份 PDF 合併成一份",
+      "expected_skills": ["pdf"]
+    },
+    {
+      "id": "Q27",
+      "split": "test",
+      "query": "Storeasy 多據點迷你倉頁面怎麼做動態語意 SEO 迴圈，避免因為分店內容太像被 Google 判定為垃圾內容？",
+      "expected_skills": ["storeasy-seo-looping"]
+    },
+    {
+      "id": "Q28",
+      "split": "test",
+      "query": "在動手寫這個大型跨模組功能之前，先幫我寫一份可執行的分步實作計畫 (Implementation Plan)",
+      "expected_skills": ["writing-plans", "sparc-methodology", "agent-planner"]
+    },
+    {
+      "id": "Q29",
+      "split": "test",
+      "query": "幫我對這個新寫好的後端登入與檔案上傳 API 進行資安稽核，檢查有沒有 SQL Injection 或 Path Traversal 漏洞",
+      "expected_skills": ["security-audit", "agency-testing-api-tester"]
+    },
+    {
+      "id": "Q30",
+      "split": "test",
+      "query": "幫我診斷為什麼網站的 Core Web Vitals (LCP/CLS)、robots.txt 跟 sitemap 索引狀態有異常",
+      "expected_skills": ["technical-seo-checker", "seo-audit"]
+    },
+    {
+      "id": "Q31",
+      "split": "train",
+      "query": "幫我調整 US3C 首頁 MarginObsBoard 的銷售毛利觀測、目標毛利率滑桿與收購定價尺收購上限",
+      "expected_skills": ["us3c-tradein-margin-pricing"]
+    },
+    {
+      "id": "Q32",
+      "split": "train",
+      "query": "我要修改 US3C 機台異常單 L1~L4 評等與 us3cdriverapp 司機巡視取貨的同步邏輯",
+      "expected_skills": ["us3c-kiosk-driver-ops"]
+    },
+    {
+      "id": "Q33",
+      "split": "train",
+      "query": "幫我檢查 iMCheck 二手手機驗機、Securaze 資料抹除與 /blacklist 黑名單 Edge Function 權限",
+      "expected_skills": ["us3c-imcheck-device-qc"]
+    },
+    {
+      "id": "Q34",
+      "split": "test",
+      "query": "調研 BUNNIT 與手機回收在 PTT、Threads 的社群討論聲量，並用 Jev 更新 socialIntelFixture.json",
+      "expected_skills": ["agent-reach", "social-listening-brief"]
+    },
+    {
+      "id": "Q35",
+      "split": "test",
+      "query": "幫我編輯 US3C 與 iMCheck 門市驗機的 SOP 教學檔，套用旁註 callout 標註配方",
+      "expected_skills": ["sop-lesson"]
+    }
+  ]
+}

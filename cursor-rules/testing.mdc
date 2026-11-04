@@ -1,0 +1,33 @@
+---
+description: 跨語言測試規範，含 TDD 與防作弊（來源：~/.gemini/rules/testing.md）
+globs: "**/*.{test,spec}.{ts,tsx,js,jsx,py}"
+alwaysApply: false
+---
+
+# 測試規範
+
+## TDD 與自動化迴圈
+
+- 遵循 RED → GREEN → REFACTOR
+- 撰寫測試與實作後，必須主動用 `Shell` 執行 `npm test` 或 `pytest`，自行讀取錯誤並修復
+- 最多自我循環 5 次；超過上限或連續同樣錯誤 2 次必須中止
+- 嚴禁為了通過測試而刪除斷言、弱化條件或使用 `@skip`
+
+## 測試結構
+
+- AAA：Arrange → Act → Assert
+- 一個測試只驗證一個行為
+- 測試描述用自然語言，清楚表達「什麼情境下、預期什麼結果」
+
+## 命名
+
+- 前端：`*.test.tsx` / `*.test.ts`（與元件同名）
+- 後端：`test_*.py`（與模組同名）
+- 函式：`test_<行為>_<情境>_<預期結果>`
+
+## Mock 與覆蓋率
+
+- 外部依賴一律 Mock
+- 共用 Mock 抽離為 fixture / factory
+- 避免測試互相依賴或共享狀態
+- 核心業務邏輯覆蓋率應 ≥ 80%；邊界條件與錯誤路徑必須有測試

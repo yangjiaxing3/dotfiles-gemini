@@ -1,0 +1,4 @@
+interface:
+  display_name: "Storeasy Channel Operations"
+  short_description: "Storeasy channel publishing, verification, and rollback"
+  default_prompt: "Use $storeasy-channel-operations to analyze the Channel Manager release workflow."

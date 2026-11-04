@@ -9,7 +9,7 @@ license: Proprietary. LICENSE.txt has complete terms
 ## All Excel files
 
 ### Zero Formula Errors
-- Every Excel model MUST be delivered with ZERO formula errors (`#REF!`, `#DIV/0!`, `#VALUE!`, `#N/A`, `#NAME?`)
+- Every Excel model MUST be delivered with ZERO formula errors (#REF!, #DIV/0!, #VALUE!, #N/A, #NAME?)
 
 ### Preserve Existing Templates (when updating templates)
 - Study and EXACTLY match existing format, style, and conventions when modifying files
@@ -31,69 +31,105 @@ Unless otherwise stated by the user or existing template
 ### Number Formatting Standards
 
 #### Required Format Rules
-- **Years**: Format as text strings (e.g., `"2024"` not `"2,024"`)
-- **Currency**: Use `$#,##0` format; ALWAYS specify units in headers (`"Revenue ($mm)"`)
-- **Zeros**: Use number formatting to make all zeros `"-"`, including percentages (e.g., `"$#,##0;($#,##0);-"`)
-- **Percentages**: Default to `0.0%` format (one decimal)
-- **Multiples**: Format as `0.0x` for valuation multiples (EV/EBITDA, P/E)
-- **Negative numbers**: Use parentheses `(123)` not minus `-123`
+- **Years**: Format as text strings (e.g., "2024" not "2,024")
+- **Currency**: Use $#,##0 format; ALWAYS specify units in headers ("Revenue ($mm)")
+- **Zeros**: Use number formatting to make all zeros "-", including percentages (e.g., "$#,##0;($#,##0);-")
+- **Percentages**: Default to 0.0% format (one decimal)
+- **Multiples**: Format as 0.0x for valuation multiples (EV/EBITDA, P/E)
+- **Negative numbers**: Use parentheses (123) not minus -123
 
 ### Formula Construction Rules
 
-#### Assumptions Placement & Helper Columns
-- Place ALL assumptions (growth rates, margins, tax rates, multiples, etc.) in separate assumption cells
-- Decompose complex nested logic (>3 levels) into auditable **Helper Columns** (e.g., Net Principal $\rightarrow$ Tax Plug $\rightarrow$ Total Credit $\rightarrow$ Balance Check)
-- Use explicit guard clauses (`=IF(L2="否", 0, ...)`) instead of blind `IFERROR(..., "")` that masks `#REF!` or `#NAME?` in financial reconciliations
+#### Assumptions Placement
+- Place ALL assumptions (growth rates, margins, multiples, etc.) in separate assumption cells
+- Use cell references instead of hardcoded values in formulas
+- Example: Use =B5*(1+$B$6) instead of =B5*1.05
 
 #### Formula Error Prevention
-- Verify all cell references are correct and check for off-by-one errors in ranges
-- Test with edge cases (zero values, negative numbers, numeric strings in `SUMIFS`)
-- Verify no unintended circular references via the DAG analyzer
+- Verify all cell references are correct
+- Check for off-by-one errors in ranges
+- Ensure consistent formulas across all projection periods
+- Test with edge cases (zero values, negative numbers)
+- Verify no unintended circular references
 
-# XLSX Creation, Multi-Engine Verification, and Analysis
+#### Documentation Requirements for Hardcodes
+- Comment or in cells beside (if end of table). Format: "Source: [System/Document], [Date], [Specific Reference], [URL if applicable]"
+- Examples:
+  - "Source: Company 10-K, FY2024, Page 45, Revenue Note, [SEC EDGAR URL]"
+  - "Source: Company 10-Q, Q2 2025, Exhibit 99.1, [SEC EDGAR URL]"
+  - "Source: Bloomberg Terminal, 8/15/2025, AAPL US Equity"
+  - "Source: FactSet, 8/20/2025, Consensus Estimates Screen"
 
-## Installed GitHub Formula Engines (in `/xlsx` Skill Environment)
+# XLSX creation, editing, and analysis
 
-`openpyxl` writes formula strings (`<f>`) without evaluating cached values (`<v>` is `None`). This skill provides a dedicated virtualenv (`C:\Users\Jiaxing\.gemini\config\skills\xlsx\.venv`) and Node.js runtime integrating 4 top open-source engines:
+## Overview
 
-1. **Windows Excel COM (`pywin32` / `xlwings 0.37.7`) — Primary Recalc & Dynamic Array Engine**:
-   - Used automatically by [`recalc.py`](./recalc.py) on Windows (`CalculateFullRebuild()`) to compute cached values and scan all cells for zero errors.
-   - Auto-fixes unprefixed modern Excel 365 functions (`XLOOKUP`, `LET`, `LAMBDA`, `FILTER`, `UNIQUE`, `SORT`) with OOXML `_xlfn.` prefixes so `openpyxl` files never trigger `#NAME?`.
-2. **`vinci1it2000/formulas` (`v1.3.4`) + `networkx` — AST Compiler & DAG Topology Analyzer**:
-   - Inspects cross-sheet dependency graphs, topological depth, hotspot ranges, and circular references:
-     `& "C:\Users\Jiaxing\.gemini\config\skills\xlsx\.venv\Scripts\python.exe" "C:\Users\Jiaxing\.gemini\config\skills\xlsx\scripts\formula_engine_hub.py" dag file.xlsx`
-3. **`bradbase/xlcalculator` (`v0.5.0`) — Financial Model Unit-Test & What-If Evaluator**:
-   - Evaluates target cells with injected parameter overrides without opening desktop Excel:
-     `& "C:\Users\Jiaxing\.gemini\config\skills\xlsx\.venv\Scripts\python.exe" "C:\Users\Jiaxing\.gemini\config\skills\xlsx\scripts\formula_engine_hub.py" eval file.xlsx "Sheet1!B10" --set "Sheet1!A2=500"`
-4. **`handsontable/hyperformula` (`v3.5.0`, 423 functions) & `@ironcalc/wasm` — Headless JS/Wasm Engine**:
-   - Evaluates 400+ Excel functions and array formulas in headless Node.js or React/TS web apps:
-     `node "C:\Users\Jiaxing\.gemini\config\skills\xlsx\scripts\hyperformula_eval.js"`
+A user may ask you to create, edit, or analyze the contents of an .xlsx file. You have different tools and workflows available for different tasks.
+
+## Important Requirements
+
+**LibreOffice Required for Formula Recalculation**: You can assume LibreOffice is installed for recalculating formula values using the `recalc.py` script. The script automatically configures LibreOffice on first run
 
 ## Reading and analyzing data
 
 ### Data analysis with pandas
+For data analysis, visualization, and basic operations, use **pandas** which provides powerful data manipulation capabilities:
+
 ```python
 import pandas as pd
 
-df = pd.read_excel('file.xlsx')
-all_sheets = pd.read_excel('file.xlsx', sheet_name=None)
+# Read Excel
+df = pd.read_excel('file.xlsx')  # Default: first sheet
+all_sheets = pd.read_excel('file.xlsx', sheet_name=None)  # All sheets as dict
+
+# Analyze
+df.head()      # Preview data
+df.info()      # Column info
+df.describe()  # Statistics
+
+# Write Excel
+df.to_excel('output.xlsx', index=False)
 ```
+
+## Excel File Workflows
 
 ## CRITICAL: Use Formulas, Not Hardcoded Values
 
-**Always use Excel formulas instead of calculating values in Python and hardcoding them.**
+**Always use Excel formulas instead of calculating values in Python and hardcoding them.** This ensures the spreadsheet remains dynamic and updateable.
 
+### ❌ WRONG - Hardcoding Calculated Values
 ```python
-# Good: Let Excel calculate the sum dynamically
-sheet['B10'] = '=SUM(B2:B9)'
-sheet['C5'] = '=(C4-C2)/C2'
+# Bad: Calculating in Python and hardcoding result
+total = df['Sales'].sum()
+sheet['B10'] = total  # Hardcodes 5000
+
+# Bad: Computing growth rate in Python
+growth = (df.iloc[-1]['Revenue'] - df.iloc[0]['Revenue']) / df.iloc[0]['Revenue']
+sheet['C5'] = growth  # Hardcodes 0.15
+
+# Bad: Python calculation for average
+avg = sum(values) / len(values)
+sheet['D20'] = avg  # Hardcodes 42.5
 ```
 
+### ✅ CORRECT - Using Excel Formulas
+```python
+# Good: Let Excel calculate the sum
+sheet['B10'] = '=SUM(B2:B9)'
+
+# Good: Growth rate as Excel formula
+sheet['C5'] = '=(C4-C2)/C2'
+
+# Good: Average using Excel function
+sheet['D20'] = '=AVERAGE(D2:D19)'
+```
+
+This applies to ALL calculations - totals, percentages, ratios, differences, etc. The spreadsheet should be able to recalculate when source data changes.
+
+
 ## Progressive Disclosure References (On-Demand)
-- Detailed templates, multi-engine CLI commands, OOXML `_xlfn.` rules, and deep-dive checklists live in [references/detailed-guide.md](./references/detailed-guide.md). Load via `view_file` when needed.
+- Detailed templates, extended examples, and deep-dive checklists have been moved to [references/detailed-guide.md](./references/detailed-guide.md) to keep context lean. Load that file via `view_file` only when needed.
 
 ## ⚠️ Gotchas (避坑指南)
-- **OOXML 現代函數 `#NAME?` 陷阱**：透過 `openpyxl` 直接寫入 `=XLOOKUP(...)`、`=LET(...)`、`=FILTER(...)` 會報 `#NAME?`。必須加上 `_xlfn.` 前綴（或執行 `recalc.py` 自動修復），或用 `xlwings` `Range.formula2` 寫入。
-- **`SUMIFS` 純數字文字代碼 `<>` 強制轉型陷阱**：當科目或代碼為純數字文字（如 `"1112003"`）時，`SUMIFS(..., "<>"&K7)` 會將條件轉為數值導致 `文字 <> 數值` 恆真；應改用「總額減去相等項（集合補集法）」。
 - **終端機輸出保護 (Context Overflow Prevention)**：執行腳本或查詢時，禁止直接將上百筆 JSON/日誌印到 stdout；請導向暫存檔或加上筆數限制。
-- **優先使用確定性腳本**：產出 `.xlsx` 後必須執行 `recalc.py` 與 `scripts/formula_engine_hub.py` 驗證 0 錯誤，不要依賴純語意猜測。
+- **優先使用確定性腳本**：遇到格式轉換、字數統計或合規檢查，優先調用 `scripts/` 下的 Python 工具，不要依賴純語意猜測。

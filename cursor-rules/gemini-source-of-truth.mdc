@@ -1,0 +1,10 @@
+---
+description: 全域規則單一真相來源與雲端 Cursor Cloud Agents 相容規範
+alwaysApply: true
+---
+
+# 單一真相來源 (Cloud & Local Single Source of Truth)
+
+- 本機環境下，全域工程規則的權威來源為 `C:\Users\Jiaxing\.gemini\GEMINI.md`，並透過 `sync_skills_to_cloud_repos.py` 自動同步至各專案的 `.cursor/rules/*.mdc` 與 `.agents/skills/` / `.cursor/skills/`。
+- 在 **Cursor Cloud Agents（雲端 Linux 容器）** 環境下，請直接以專案內 `.cursor/rules/*.mdc`、`AGENTS.md`、`.cursor/skills/`、`.agents/skills/` 與 `scripts/skill_router.py` 為權威來源（無須存取本機 Windows `C:\Users\...` 路徑）。
+- 終端機工具在 Cursor 使用 `Shell`，在 Gemini CLI / Antigravity 使用 `run_command`，核心 Lean-Triad 工程規範完全一致。

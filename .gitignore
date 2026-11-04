@@ -1,28 +1,70 @@
-# 預設忽略所有
+# 預設忽略所有本地執行期狀態、快取、憑證與對話紀錄 (secrets/, antigravity/brain/, logs/, bin/ 等)
 *
 
-# 只追蹤規則與核心設定檔案
+# 1. 核心全域規則與說明文件
 !.gitignore
 !README.md
 !GEMINI.md
+!WALKTHROUGH_SWARM_V3_AND_SKILLS.md
+!settings.json
+
+# 2. 領域規則與安全攔截 Hooks
 !rules/
 !rules/*.md
 !hooks/
 !hooks/*.ps1
-!settings.json
 
-# 追蹤升級後之 /xlsx Skill 與四大開源公式引擎腳本 (排除 .venv 與 node_modules)
+# 3. 確定性技能路由器、異質多模型會審閘門與跨機同步腳本
+!scripts/
+!scripts/*.py
+!scripts/*.json
+
+# 4. 跨專案經驗記憶庫與 Cursor 全域規則鏡像
+!memory/
+!memory/*.md
+!cursor-rules/
+!cursor-rules/*.mdc
+
+# 5. Antigravity 全域工作流
+!antigravity/
+!antigravity/global_workflows/
+!antigravity/global_workflows/*.md
+
+# 6. 全域 217 個 Skills 單一真相來源 (config/skills/)
 !config/
 !config/skills/
-!config/skills/xlsx/
-!config/skills/xlsx/SKILL.md
-!config/skills/xlsx/README.md
-!config/skills/xlsx/LICENSE.txt
-!config/skills/xlsx/recalc.py
-!config/skills/xlsx/requirements.txt
-!config/skills/xlsx/package.json
-!config/skills/xlsx/references/
-!config/skills/xlsx/references/*.md
-!config/skills/xlsx/scripts/
-!config/skills/xlsx/scripts/*.py
-!config/skills/xlsx/scripts/*.js
+!config/skills/**/
+
+# 放行 Skills 內之純文字規格、參考指南與輕量腳本
+!config/skills/**/*.md
+!config/skills/**/*.py
+!config/skills/**/*.js
+!config/skills/**/*.mjs
+!config/skills/**/*.ts
+!config/skills/**/*.sh
+!config/skills/**/*.ps1
+!config/skills/**/*.json
+!config/skills/**/*.yaml
+!config/skills/**/*.yml
+!config/skills/**/*.txt
+!config/skills/**/*.html
+!config/skills/**/*.css
+
+# 強制排除 Skills 內可能存在的虛擬環境、套件依賴與快取目錄
+config/skills/**/.venv/
+config/skills/**/.venv/**
+config/skills/**/venv/
+config/skills/**/venv/**
+config/skills/**/node_modules/
+config/skills/**/node_modules/**
+config/skills/**/__pycache__/
+config/skills/**/__pycache__/**
+config/skills/**/.unlighthouse/
+config/skills/**/.unlighthouse/**
+config/skills/**/.claude-plugin/
+config/skills/**/.claude-plugin/**
+config/skills/**/.github/
+config/skills/**/.github/**
+config/skills/**/.bsk*/
+config/skills/**/.bsk*/**
+config/skills/**/package-lock.json

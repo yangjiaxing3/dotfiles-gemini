@@ -34,7 +34,7 @@ globs: ["**/*"]
 當偵測到以下情境時，**必須暫停並明確告知使用者風險**：
 
 1. **批量檔案修改**：一次修改超過 10 個檔案時
-2. **跨專案操作**：操作目標超出當前工作區根目錄時
+2. **跨專案操作**：操作目標超出當前工作區根目錄時。**例外**：Storeasy 聯動家族 sibling（`StoreasyFMnew`、`storeasynewwebsite`、`STOREASY_IT`、`Storeasyworkdivnew`）的讀寫與驗證不需再問，2026-08-23 常設授權。
 3. **環境變數修改**：任何涉及 `.env` 檔案的寫入操作
 4. **資料庫結構變更**：ALTER TABLE、CREATE INDEX 等 schema 變更
 5. **套件安裝**：`pip install`、`npm install` 新增未出現在 requirements.txt / package.json 的套件
