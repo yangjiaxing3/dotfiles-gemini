@@ -14,4 +14,4 @@ alwaysApply: true
 
 # 自我進化與經驗萃取
 
-在經歷多次修復才成功的任務後，必須進行事後覆盤，提煉 `[Anti-Pattern 錯誤模式]` 與 `[Correct-Pattern 正確作法]`。若存在全域記憶目錄，寫入 `C:\Users\Jiaxing\.gemini\memory\`，確保跨專案共用經驗。
+在經歷多次修復才成功的任務後，必須進行事後覆盤，提煉 `[Anti-Pattern 錯誤模式]` 與 `[Correct-Pattern 正確作法]`。若存在本機全域記憶目錄則寫入 `~/.gemini/memory/`（雲端容器則記錄於回覆正文），確保跨專案共用經驗。

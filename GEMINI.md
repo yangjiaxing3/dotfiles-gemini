@@ -44,16 +44,17 @@
        6. **`🔍 Agent E` (`deepseek-flash` + `jev-1.13.0` 規格防漏砍審查 + `grok-4.7` 品質終審 + `gemini-4-argon` 3D/UI 視覺 E2E)**：確認規格 100% 未縮水並跑通真實測試。
   4. **偷懶於方案，絕不偷懶於完整性**：變更所觸及的所有呼叫端 (callers)、型別、測試與真實終端機驗證必須一次改完，不留半套。
   5. **妥協留痕 (`shortcut:`)**：若採取有容量或場景上限的捷徑，強制加上單行註解 `// shortcut: <上限條件>, <何時該升級>`（可由 `/ponytail-debt` 盤點）。
-  6. **收尾誠實揭露與強制執行回條 (Mandatory Lean-Triad Execution Receipt)**：
-     每次執行任務（含程式碼修改、架構/技能規劃、Audit 審查、問題診斷；純閒聊除外）的回覆結尾，**不需等使用者手動輸入 `/multi-agent-mode`**，一律自動套用 Lean-Triad 流程並強制輸出以下結構化 **「🛡️ Lean-Triad 執行回條」**，讓使用者一眼驗收 Agent 是否落實圖譜導航、角色技能精準掛載、極簡減法與分級會審：
+  6. **收尾誠實揭露與極簡執行回條 (Final-Turn Compact Lean-Triad Receipt — 嚴禁中繼回合重複輸出)**：
+     - **🚫 嚴禁輸出回條之場景（防 Token 浪費）**：等待背景任務（`run_command` / subagent）完成的中繼進度回覆、澄清提問、純問答或閒聊，或同一任務無新程式碼變更時，**絕對禁止**附上執行回條。
+     - **✅ 僅在「任務最終完成交付（Final Delivery Turn）」結尾輸出一次精簡逐行版回條（每項獨立換行，清晰易讀且省去冗長標題）**：
      ```markdown
      ---
-     ### 🛡️ Lean-Triad 執行回條 (Execution Receipt)
-     - **🧰 Role-Scoped Skills (角色×任務技能組合)**：`<列出本輪或各 Agent 0~E 依任務領域掛載之專屬 Skills，絕不載入無關 MCP>`
-     - **🧭 Graphify 圖譜導航**：`<動刀前檢索之節點 / 動刀後是否已執行 graphify update .>`
-     - **✂️ Ponytail 精簡度**：`+<新增行數> / -<刪除行數> 行（淨增減；無改動填 +0 / -0 行）｜shortcut: <無或註記>`
-     - **⚖️ 分級會審與測試門禁**：`<快改 <15 行或純規劃免外部 API 會審 / 重構或 >15 行刪減輸出 multi_model_gate.py 結果 + pytest/vitest/tsc 真實通過數>`
-     - **⚠️ 略過項目與邊界風險**：`<1-2 行列出本次刻意略過未做的項目與使用者需注意的邊界風險>`
+     **🛡️ Lean-Triad**
+     - 🧰 **Skills**：`<Skills>`
+     - 🧭 **Graphify**：`<節點 / update>`
+     - ✂️ **Ponytail**：`+<新增> / -<刪除> 行 (shortcut: <無或註記>)`
+     - ⚖️ **Gate & QA**：`<multi_model_gate 真實 verdict/score/req_ids（若未跑腳本強制填「未執行 multi_model_gate」，嚴禁單一模型自評冒充）＋ 測試通過數>`
+     - ⚠️ **邊界**：`<略過項目與風險>`
      ```
 - **第一性原理**：從根本剖析問題，善用工具提升效率。
 - **事實為本**：以事實為最高準則，有錯直說。

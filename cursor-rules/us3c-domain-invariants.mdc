@@ -5,7 +5,7 @@ alwaysApply: true
 
 # US3C 二手 3C 回收 × 智慧機台家族專屬規範
 
-> 適用專案：`us3c-next`, `711us3cwebsite`, `msi_us3c_recycle`, `us3cdriverapp`, `us3cwebsite-env`, `us3c_mvp`, `usdwarrantynew`, `iMCheck`, `logistic_driver`, `price_crawler`, `Yangbiz`。
+> 適用專案：`us3c-next`, `711us3cwebsite`, `msi_us3c_recycle`, `us3cdriverapp`, `us3cwebsite-env`, `us3c_mvp`, `usdwarrantynew`, `beikeshop_v3_jx`, `iMCheck`, `logistic_driver`, `price_crawler`, `Yangbiz`。
 
 ## 1. 不可妥協的核心業務鐵律 (Protected Domain Invariants)
 

@@ -69,6 +69,7 @@ US3C_REPO_NAMES = {
     "us3cwebsite-env",
     "us3c_mvp",
     "usdwarrantynew",
+    "beikeshop_v3_jx",
     "imcheck",
     "logistic_driver",
     "price_crawler",
@@ -110,19 +111,26 @@ US3C_ONLY_SKILLS = {
 def detect_workspace_family(workspace_root: Path | None = None) -> str:
     root = workspace_root or WORKSPACE_ROOT
     name_low = root.name.lower()
-    if name_low in US3C_REPO_NAMES or "us3c" in name_low or "imcheck" in name_low:
+    if (
+        name_low in US3C_REPO_NAMES
+        or "us3c" in name_low
+        or "imcheck" in name_low
+        or "beikeshop" in name_low
+        or "warranty" in name_low
+    ):
         return "us3c"
     return "storeasy"
 
 
 def build_skill_roots(workspace_root: Path) -> list[tuple[str, Path]]:
-    """依 Antigravity 與 Cursor Cloud Agents 優先序 (.agents -> .agent -> .cursor -> global) 組出指定工作區的 Skill 掃描根目錄。"""
+    """依 Antigravity 與 Cursor Cloud Agents 優先序 (.agents -> .agent -> .cursor -> global -> cursor_user) 組出指定工作區的 Skill 掃描根目錄。"""
     roots: list[tuple[str, Path]] = []
     for label, p in (
         ("workspace_.agents", workspace_root / ".agents" / "skills"),
         ("workspace_.agent", workspace_root / ".agent" / "skills"),
         ("workspace_.cursor", workspace_root / ".cursor" / "skills"),
         ("global_config", GLOBAL_SKILLS_ROOT),
+        ("cursor_user", CURSOR_USER_SKILLS_ROOT),
     ):
         try:
             if p.is_dir():
@@ -165,6 +173,10 @@ INTENT_SYNONYMS: dict[str, list[str]] = {
     "channel manager": ["storeasy-channel-operations", "促銷", "發布", "官網"],
     "促銷": ["storeasy-channel-operations", "campaigns", "promotions"],
     "二手回收": ["skillorchestrator", "us3c-seo-loop", "kiosk-image-optimizer"],
+    "二手手機": ["us3c-seo-loop", "us3c-tradein-margin-pricing", "skillorchestrator", "seo-audit"],
+    "手機回收": ["us3c-seo-loop", "agent-reach", "us3c-kiosk-driver-ops", "skillorchestrator"],
+    "保固": ["us3c-seo-loop", "us3c-imcheck-device-qc", "seo-schema"],
+    "商品頁": ["us3c-seo-loop", "seo-page", "seo-schema", "on-page-seo-auditor"],
     "swarm": ["skillorchestrator", "swarm-orchestration", "multi-agent-mode"],
     "排名掉了": ["on-page-seo-auditor", "content-refresher", "alert-manager"],
     "單頁": ["on-page-seo-auditor", "seo-audit"],
@@ -315,6 +327,8 @@ def load_active_skills(
             continue
         for p_str in sorted(glob.glob(str(root / "*" / "SKILL.md"))):
             p = Path(p_str)
+            if p.parent.name.startswith("source-command-"):
+                continue
             try:
                 if p.parent.is_junction():
                     continue

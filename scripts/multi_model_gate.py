@@ -1,14 +1,14 @@
 #!/usr/bin/env python3
 """
-Ruflo Swarm V3 — 真實外部異質多模型 API 會審閘門 (C:/Users/Jiaxing/.gemini/scripts/multi_model_gate.py)
+Ruflo Swarm V3 — 真實外部異質多模型 API 會審閘門 (scripts/multi_model_gate.py)
 
-從 C:/Users/Jiaxing/.gemini/secrets/multi_model_keys.env 讀取金鑰（絕不印出金鑰明文），
+從當前電腦的 ~/.gemini/secrets/multi_model_keys.env 或環境變數讀取金鑰（絕不印出金鑰明文），
 併發發送真實 HTTP 請求至異質模型 API（deepseek-flash, grok-4.7, qwen-3.8-max, gemini-4-argon），
 以本機規則摘要模型燈號（非 TypeSafe／JEV），回傳包含真實 API Request ID、耗時與審查結論的結構化 JSON。
 
 用法：
-  python C:/Users/Jiaxing/.gemini/scripts/multi_model_gate.py check-keys
-  python C:/Users/Jiaxing/.gemini/scripts/multi_model_gate.py review --prompt "擬簡化內容..." --git-diff --output temp_multi_review.json
+  python scripts/multi_model_gate.py check-keys
+  python scripts/multi_model_gate.py review --prompt "擬簡化內容..." --git-diff --output temp_multi_review.json
 """
 from __future__ import annotations
 
@@ -36,11 +36,25 @@ except Exception:
     load_active_skills = None  # type: ignore
 
 ENV_PATH = Path.home() / ".gemini" / "secrets" / "multi_model_keys.env"
-VAULT_PATH = Path(os.environ.get(
-    "MULTI_MODEL_VAULT_FILE",
-    str(Path(os.environ.get("LOCALAPPDATA", str(Path.home() / "AppData" / "Local")))
-        / "US3C" / "Secrets" / "multi-model-keys.dpapi.xml"),
-))
+
+
+def _resolve_vault_path() -> Path:
+    """唯讀解析 Windows DPAPI Vault 路徑：優先採用標準 %LOCALAPPDATA% 路徑，僅於不存在時回退至 Codex MSIX 沙盒路徑。"""
+    if os.environ.get("MULTI_MODEL_VAULT_FILE"):
+        return Path(os.environ["MULTI_MODEL_VAULT_FILE"])
+    local_app_data = Path(os.environ.get("LOCALAPPDATA", str(Path.home() / "AppData" / "Local")))
+    canonical = local_app_data / "US3C" / "Secrets" / "multi-model-keys.dpapi.xml"
+    if canonical.is_file() and not canonical.is_symlink():
+        return canonical
+    pkgs_dir = local_app_data / "Packages"
+    if pkgs_dir.is_dir():
+        for msix_vault in pkgs_dir.glob("OpenAI.Codex_*/LocalCache/Local/US3C/Secrets/multi-model-keys.dpapi.xml"):
+            if msix_vault.is_file() and not msix_vault.is_symlink():
+                return msix_vault
+    return canonical
+
+
+VAULT_PATH = _resolve_vault_path()
 
 
 def read_secret_text() -> str:
@@ -145,7 +159,7 @@ def build_endpoints(env: dict[str, str]) -> list[dict[str, Any]]:
             attempts.append({
                 "url": "https://openrouter.ai/api/v1/chat/completions",
                 "key": or_key,
-                "model": "x-ai/grok-4.3",
+                "model": "x-ai/grok-4.7",
                 "provider": "openrouter",
             })
         endpoints.append({
@@ -231,9 +245,11 @@ def _send_chat_request(url: str, key: str, model: str, system_prompt: str, promp
         "temperature": 0.2,
         "max_tokens": 4096,
     }
-    if url.startswith("https://openrouter.ai/") and model.startswith("qwen/"):
+    if url.startswith("https://openrouter.ai/") and (model.startswith("qwen/") or "grok-4.7" in model):
         payload["max_tokens"] = 16384
         payload["reasoning"] = {"effort": "low"}
+    if url.startswith("https://api.x.ai/") and "grok-4.7" in model:
+        payload["reasoning_effort"] = "low"
     if url.startswith("https://api.deepseek.com/"):
         payload["max_tokens"] = 16384
         payload["thinking"] = {"type": "disabled"}
@@ -326,6 +342,7 @@ US3C_REPO_NAMES = {
     "us3cwebsite-env",
     "us3c_mvp",
     "usdwarrantynew",
+    "beikeshop_v3_jx",
     "imcheck",
     "logistic_driver",
     "price_crawler",
@@ -336,6 +353,7 @@ US3C_PROMPT_KEYWORDS = (
     "us3c", "imcheck", "bunnit", "手機回收", "二手手機", "舊換新", "收購上限",
     "收購定價尺", "毛利觀測", "marginobsboard", "驗機", "黑名單", "securaze",
     "us3cdriverapp", "異常單", "r3", "l1", "l2", "7-11手機回收", "回收機",
+    "ucare", "保固", "usd",
 )
 
 ROLE_TASK_SKILLS_US3C: dict[str, dict[str, list[str]]] = {
@@ -389,7 +407,13 @@ ROLE_TASK_SKILLS_US3C: dict[str, dict[str, list[str]]] = {
 
 def detect_industry_family(prompt: str = "") -> str:
     cwd_name = Path.cwd().name.lower()
-    if cwd_name in US3C_REPO_NAMES or "us3c" in cwd_name or "imcheck" in cwd_name:
+    if (
+        cwd_name in US3C_REPO_NAMES
+        or "us3c" in cwd_name
+        or "imcheck" in cwd_name
+        or "beikeshop" in cwd_name
+        or "warranty" in cwd_name
+    ):
         return "us3c"
     p_low = prompt.lower()
     if any(kw in p_low for kw in US3C_PROMPT_KEYWORDS):
@@ -536,7 +560,7 @@ def build_role_system_prompt(role: str, plan: dict[str, Any]) -> str:
     return "\n\n".join(lines)
 
 
-def call_model(ep: dict[str, Any], prompt: str, plan: dict[str, Any] | None = None, timeout: int = 60) -> dict[str, Any]:
+def call_model(ep: dict[str, Any], prompt: str, plan: dict[str, Any] | None = None, timeout: int = 90) -> dict[str, Any]:
     t0 = time.time()
     role = ep["role"]
     system_prompt = build_role_system_prompt(role, plan or {})
@@ -600,14 +624,28 @@ def call_model(ep: dict[str, Any], prompt: str, plan: dict[str, Any] | None = No
     }
 
 
+def _extract_primary_signal(review: str) -> str:
+    """擷取模型回覆開頭的主判定燈號（避免內文表格或小標題同時含 🟢/🟡/🔴 造成單一模型重複計票）。"""
+    m = re.search(r"[🟢🟡🔴]", str(review or ""))
+    return m.group(0) if m else ""
+
+
 def compute_local_gate_score(prompt: str, results: list[dict[str, Any]]) -> dict[str, Any]:
     """本機規則摘要，不是 TypeSafe／JEV API 回應，也不是安全證明。"""
     protected_keywords = ("bin packing", "collision", "bounding box", "raycast", "dxf", "matrix", "rotation", "fov", "租金", "材積")
-    touches_protected = [kw for kw in protected_keywords if kw in prompt.lower()]
+    # 僅排除 multi_model_gate.py 自身 diff 區塊中定義的關鍵字常數，避免跨檔吞掉其他檔案 diff
+    diff_blocks = re.split(r"(?=^diff --git )", prompt, flags=re.M)
+    cleaned_prompt = "".join(
+        blk
+        for blk in diff_blocks
+        if not (blk.startswith("diff --git ") and "multi_model_gate.py" in blk.splitlines()[0])
+    )
+    touches_protected = [kw for kw in protected_keywords if kw in cleaned_prompt.lower()]
     ok_count = sum(1 for r in results if r.get("status") == "ok")
-    red_flags = sum(1 for r in results if "🔴" in str(r.get("review", "")))
-    yellow_flags = sum(1 for r in results if "🟡" in str(r.get("review", "")))
-    green_flags = sum(1 for r in results if "🟢" in str(r.get("review", "")))
+    primary_signals = [_extract_primary_signal(str(r.get("review", ""))) for r in results]
+    red_flags = sum(1 for s in primary_signals if s == "🔴")
+    yellow_flags = sum(1 for s in primary_signals if s == "🟡")
+    green_flags = sum(1 for s in primary_signals if s == "🟢")
 
     score = 1.0
     if touches_protected:
@@ -643,6 +681,7 @@ def main():
     p_rev.add_argument("--prompt-file", type=str, default="", help="Path to prompt file")
     p_rev.add_argument("--git-diff", action="store_true", help="Append complete tracked changes against HEAD; empty diffs fail")
     p_rev.add_argument("--commit", type=str, default="", help="Specific commit ref to diff (e.g., 186ea7a)")
+    p_rev.add_argument("--files", nargs="*", default=[], help="Optional pathspecs to scope git diff")
     p_rev.add_argument("--output", type=str, default="", help="Write JSON result to file")
 
     args = parser.parse_args()
@@ -690,13 +729,14 @@ def main():
         prompt_text = args.prompt
         if args.prompt_file and Path(args.prompt_file).exists():
             prompt_text = Path(args.prompt_file).read_text(encoding="utf-8")
+        base_prompt = f"[{Path.cwd().name}] {prompt_text}".strip()
         if args.git_diff or args.commit:
             try:
                 if args.commit:
-                    cmd = ["git", "show", "--format=", args.commit, "--"]
+                    cmd = ["git", "show", "--format=", args.commit, "--", *(args.files or [])]
                     diff_out = subprocess.check_output(cmd, text=True, encoding="utf-8", errors="ignore")
                 else:
-                    cmd = ["git", "diff", "HEAD", "--"]
+                    cmd = ["git", "diff", "HEAD", "--", *(args.files or [])]
                     diff_out = subprocess.check_output(cmd, text=True, encoding="utf-8", errors="ignore")
                 if diff_out.strip():
                     prompt_text += "\n\n【真實 Git Diff】（未含未追蹤檔案）:\n```diff\n" + diff_out + "\n```"
@@ -710,14 +750,14 @@ def main():
             print(json.dumps({"error": "Empty prompt"}, ensure_ascii=False))
             return
 
-        skill_plan = plan_role_skill_matrix(prompt_text)
+        skill_plan = plan_role_skill_matrix(base_prompt)
         results = []
         with concurrent.futures.ThreadPoolExecutor(max_workers=max(1, len(endpoints))) as ex:
             futs = [ex.submit(call_model, ep, prompt_text, skill_plan) for ep in endpoints]
             for f in concurrent.futures.as_completed(futs):
                 results.append(f.result())
 
-        local_summary = compute_local_gate_score(prompt_text, results)
+        local_summary = compute_local_gate_score(base_prompt, results)
         out_data = {
             "status": "completed",
             "total_models_called": len(results),

@@ -17,6 +17,7 @@
 # 3. 確定性技能路由器、異質多模型會審閘門與跨機同步腳本
 !scripts/
 !scripts/*.py
+!scripts/*.ps1
 !scripts/*.json
 
 # 4. 跨專案經驗記憶庫與 Cursor 全域規則鏡像

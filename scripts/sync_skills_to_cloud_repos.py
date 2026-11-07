@@ -1,14 +1,17 @@
 #!/usr/bin/env python3
 """
 將本地全域 Rules 與 Skills（含最新 Lean-Triad、Ponytail、雙產業感知 Role-Scoped 技能矩陣、確定性路由器）
-依「產業家族 (Storeasy 迷你倉家族 vs US3C 二手 3C 家族)」一鍵分流同步至專案 Git 倉庫與 Cursor Cloud Agents 結構。
+依「產業家族 (Storeasy 迷你倉家族 vs US3C 二手 3C 家族)」一鍵分流同步至專案 Git 倉庫、Cursor Cloud Agents 結構與跨機 AgentStores。
 
 解決痛點：
 1. Cursor Cloud Agents 運行於雲端隔離 Linux 容器 (/workspace)，無法讀取本機 Windows 之
-   `C:\\Users\\Jiaxing\\.gemini\\` 或 NTFS Directory Junctions。
-2. 雙產業專屬隔離（Industry-Scoped Skill & Rule Partitioning）：
+   `~/.gemini/` 或 NTFS Directory Junctions。
+2. 跨電腦（`DESKTOP-N1NJDUH` vs `YangPC`）開啟同一 Conversation ID / 分支（如 `cursor/seo-loop-warranty-67e6`）時：
+   - 自動將受管控 Skills 寫入專案 `.agents/skills/`、實體目錄 `.cursor/skills/`（消除 Windows 下失效之 `120000` Git symlink）與 `.cursor/commands/`。
+   - 同步寫入本機 Cursor 雲端同步倉 `AppData/Local/Cursor/AgentStores/cursor_agent_stores/u*/files/skills`，讓同一 Cursor 帳號跨電腦自動互通。
+3. 雙產業專屬隔離（Industry-Scoped Skill & Rule Partitioning）：
    - Storeasy 迷你倉家族僅安裝「通用底座 + Storeasy 專屬技能與規則」，絕不混入二手 3C 回收技能。
-   - US3C 二手 3C 家族僅安裝「通用底座 + US3C 專屬技能與規則」，絕不混入迷你倉排櫃與每材實收技能。
+   - US3C 二手 3C 家族僅安裝「通用底座 + US3C 專屬技能與規則」，絕不混入迷你倉排櫃與每材實收技能，且保留專案既有客製技能（如 `seo-looping`、`openseo-*`）。
 """
 from __future__ import annotations
 
@@ -49,6 +52,7 @@ US3C_FAMILY_REPOS = [
     "us3cwebsite-env",
     "us3c_mvp",
     "usdwarrantynew",
+    "beikeshop_v3_jx",
     "iMCheck",
     "logistic_driver",
     "price_crawler",
@@ -125,7 +129,14 @@ MAX_FILE_BYTES = 256 * 1024  # 256 KB 上限，避免大型二進位或快取檔
 
 
 def get_repo_family(repo_name: str) -> str:
-    if repo_name in US3C_FAMILY_REPOS or "us3c" in repo_name.lower() or "imcheck" in repo_name.lower():
+    low = repo_name.lower()
+    if (
+        repo_name in US3C_FAMILY_REPOS
+        or "us3c" in low
+        or "imcheck" in low
+        or "beikeshop" in low
+        or "warranty" in low
+    ):
         return "us3c"
     return "storeasy"
 
@@ -211,8 +222,10 @@ def ensure_gitignore_allows_cloud_skills(repo: Path) -> bool:
 
 
 def ensure_cursor_environment_json(repo: Path) -> None:
-    """建立或更新 .cursor/environment.json 供 Cursor Cloud Agents 啟動時自動執行 bootstrap。"""
+    """建立或更新 .cursor/environment.json 供 Cursor Cloud Agents 啟動時自動執行 bootstrap（保留 Laravel 等無該檔之雲端 DB 設定）。"""
     env_json_path = repo / ".cursor" / "environment.json"
+    if (repo / "artisan").is_file() and not env_json_path.is_file():
+        return
     env_json_path.parent.mkdir(parents=True, exist_ok=True)
     cmd = "python3 scripts/bootstrap_cursor_cloud.py || python scripts/bootstrap_cursor_cloud.py || true"
     data = {}
@@ -228,22 +241,39 @@ def ensure_cursor_environment_json(repo: Path) -> None:
     env_json_path.write_text(json.dumps(data, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
 
 
+def has_git_symlink_architecture(repo: Path) -> bool:
+    """檢查該 Repo 是否採用 AGENTS.md 的 120000 Git symlink 單一真相源架構（.agents -> .agent）。"""
+    import subprocess
+    try:
+        out = subprocess.check_output(
+            ["git", "ls-files", "-s", ".agents", ".cursor/skills", ".cursor/commands"],
+            cwd=repo,
+            text=True,
+            stderr=subprocess.DEVNULL,
+        )
+        return "120000" in out
+    except Exception:
+        return False
+
+
 def sync_repo(repo: Path, global_skills: list[Path]) -> dict:
     family = get_repo_family(repo.name)
     excluded_skills = STOREASY_ONLY_SKILLS if family == "us3c" else US3C_ONLY_SKILLS
     excluded_rules = STOREASY_ONLY_RULES if family == "us3c" else US3C_ONLY_RULES
+    uses_git_symlinks = has_git_symlink_architecture(repo)
 
-    for rel in (".agents", ".cursor", ".cursor/skills", ".cursor/rules", ".cursor/commands", ".agents/skills"):
-        p = repo / rel
-        try:
-            if (p.is_file() or p.is_symlink()) and not p.is_dir():
-                p.unlink(missing_ok=True)
-        except OSError:
-            pass
+    if not uses_git_symlinks:
+        for rel in (".agents", ".cursor", ".cursor/skills", ".cursor/rules", ".cursor/commands", ".agents/skills"):
+            p = repo / rel
+            try:
+                if (p.is_file() or p.is_symlink()) and not p.is_dir():
+                    p.unlink(missing_ok=True)
+            except OSError:
+                pass
 
     gitignore_fixed = ensure_gitignore_allows_cloud_skills(repo)
 
-    # 1. 依產業家族同步 .cursor/rules/*.mdc，並清理另一產業之專屬規則檔
+    # 1. 依產業家族同步 .cursor/rules/*.mdc，並清理另一產業之專屬規則檔（保留專案自有規則如 usd-shop.mdc）
     rules_dst = repo / ".cursor" / "rules"
     rules_dst.mkdir(parents=True, exist_ok=True)
     for old_rule in excluded_rules:
@@ -274,7 +304,7 @@ def sync_repo(repo: Path, global_skills: list[Path]) -> dict:
     # 3. 同步 .cursor/environment.json
     ensure_cursor_environment_json(repo)
 
-    # 4. 依產業家族過濾並同步專屬 Skills 至 .agents/skills 與 .cursor/skills
+    # 4. 依產業家族過濾並同步專屬 Skills（若為 120000 Git symlink 架構則只寫入單一真相源 .agent/skills，防止雙倍/三倍重複掃描）
     family_skills = []
     for d in global_skills:
         dir_name = d.name
@@ -282,6 +312,31 @@ def sync_repo(repo: Path, global_skills: list[Path]) -> dict:
         if dir_name in excluded_skills or fm_name in excluded_skills:
             continue
         family_skills.append(d)
+
+    if uses_git_symlinks:
+        primary_skills_dst = repo / ".agent" / "skills"
+        primary_skills_dst.mkdir(parents=True, exist_ok=True)
+        for child in list(primary_skills_dst.iterdir()):
+            if (child.name in excluded_skills or child.name.startswith("source-command-")) and child.is_dir():
+                shutil.rmtree(child, ignore_errors=True)
+        skill_count = 0
+        for s_dir in family_skills:
+            fm_name = read_frontmatter_name(s_dir / "SKILL.md")
+            # 移除同 frontmatter name 但不同資料夾名稱的重複舊目錄
+            if s_dir.name != fm_name and (primary_skills_dst / s_dir.name).is_dir() and (primary_skills_dst / fm_name).is_dir():
+                shutil.rmtree(primary_skills_dst / s_dir.name, ignore_errors=True)
+            target_dir_name = s_dir.name if (primary_skills_dst / s_dir.name).is_dir() else fm_name
+            copy_clean_skill_dir(s_dir, primary_skills_dst / target_dir_name)
+            skill_count += 1
+        return {
+            "repo": repo.name,
+            "family": family,
+            "architecture": "git-symlink-single-source",
+            "rules_synced": rules_synced,
+            "commands_synced": 0,
+            "skills_synced": skill_count,
+            "gitignore_fixed": gitignore_fixed,
+        }
 
     agents_skills_dst = repo / ".agents" / "skills"
     cursor_skills_dst = repo / ".cursor" / "skills"
@@ -301,16 +356,15 @@ def sync_repo(repo: Path, global_skills: list[Path]) -> dict:
     except OSError:
         has_legacy = False
 
-    valid_dir_names = {d.name for d in family_skills}
-    valid_fm_names = {read_frontmatter_name(d / "SKILL.md") for d in family_skills}
-    cleanup_pairs = [(agents_skills_dst, valid_dir_names)]
+    # 僅移除「對立產業專屬技能」(excluded_skills) 與重複之 source-command-*，保留專案既有客製技能（如 seo-looping, openseo-*）
+    cleanup_dirs = [agents_skills_dst]
     if not same_target:
-        cleanup_pairs.append((cursor_skills_dst, valid_fm_names | valid_dir_names))
+        cleanup_dirs.append(cursor_skills_dst)
     if has_legacy:
-        cleanup_pairs.append((legacy_agent_skills, valid_dir_names))
-    for sub_dir, allowed in cleanup_pairs:
+        cleanup_dirs.append(legacy_agent_skills)
+    for sub_dir in cleanup_dirs:
         for child in list(sub_dir.iterdir()):
-            if child.name not in allowed and child.is_dir():
+            if (child.name in excluded_skills or child.name.startswith("source-command-")) and child.is_dir():
                 shutil.rmtree(child, ignore_errors=True)
 
     skill_count = 0
@@ -323,6 +377,14 @@ def sync_repo(repo: Path, global_skills: list[Path]) -> dict:
         if has_legacy:
             copy_clean_skill_dir(s_dir, legacy_agent_skills / dir_name)
         skill_count += 1
+
+    # 若 .agents/skills 內還有專案自有客製技能（如 seo-looping, openseo-*），同步鏡像一份到實體 .cursor/skills
+    if not same_target:
+        for existing_dir in agents_skills_dst.iterdir():
+            if existing_dir.is_dir() and (existing_dir / "SKILL.md").is_file():
+                fm_name = read_frontmatter_name(existing_dir / "SKILL.md")
+                if fm_name not in excluded_skills and not (cursor_skills_dst / fm_name).exists():
+                    copy_clean_skill_dir(existing_dir, cursor_skills_dst / fm_name)
 
     # 5. 同步 .cursor/commands/*.md（讓 Cursor 輸入 `/` 直接跳出核心與產業專屬技能選單；保留既有 symlink 如 us3c-next）
     commands_dst = repo / ".cursor" / "commands"
@@ -339,7 +401,7 @@ def sync_repo(repo: Path, global_skills: list[Path]) -> dict:
             US3C_ONLY_SKILLS if family == "us3c" else STOREASY_ONLY_SKILLS
         )
         for old_cmd in list(commands_dst.glob("*.md")):
-            if old_cmd.stem not in allowed_cmds:
+            if old_cmd.stem in excluded_skills:
                 old_cmd.unlink(missing_ok=True)
         for s_dir in family_skills:
             fm_name = read_frontmatter_name(s_dir / "SKILL.md")
@@ -359,9 +421,9 @@ def sync_repo(repo: Path, global_skills: list[Path]) -> dict:
 
 def sync_local_cursor_user_dirs(global_skills: list[Path]) -> dict:
     """
-    修復本機 Windows ~/.cursor/skills 的 NTFS Directory Junction 陷阱：
-    Node.js fs.readdirSync(..., { withFileTypes: true }) 對 Windows Junction 回傳 dirent.isDirectory() === false，
-    導致 Cursor 桌面端忽略所有 Junction 技能！此函式將 ~/.cursor/skills 轉為真實實體目錄，並同步 ~/.cursor/commands/*.md。
+    1. 修復本機 Windows ~/.cursor/skills 的 NTFS Directory Junction 陷阱，轉為真實實體目錄並同步 ~/.cursor/commands/*.md。
+    2. 同步至 Cursor 跨機雲端 AgentStore (`LOCALAPPDATA/Cursor/AgentStores/cursor_agent_stores/u*/files/skills`)，
+       讓同一 Cursor 帳號在 `DESKTOP-N1NJDUH` 與 `YangPC` 之間自動雲端同步 User Skills。
     """
     GLOBAL_CURSOR_SKILLS_DIR.mkdir(parents=True, exist_ok=True)
     GLOBAL_CURSOR_COMMANDS_DIR.mkdir(parents=True, exist_ok=True)
@@ -396,10 +458,26 @@ def sync_local_cursor_user_dirs(global_skills: list[Path]) -> dict:
             shutil.copy2(d / "SKILL.md", GLOBAL_CURSOR_COMMANDS_DIR / f"{fm}.md")
             cmd_count += 1
 
+    # 同步至 Cursor AgentStores (u*/files/skills) 實現跨電腦 User Skills 雲端同步
+    agent_store_synced = 0
+    local_appdata = Path(os.environ.get("LOCALAPPDATA", str(HOME / "AppData" / "Local")))
+    stores_root = local_appdata / "Cursor" / "AgentStores" / "cursor_agent_stores"
+    if stores_root.is_dir():
+        for u_dir in stores_root.glob("u*"):
+            if not u_dir.is_dir():
+                continue
+            store_skills_dir = u_dir / "files" / "skills"
+            store_skills_dir.mkdir(parents=True, exist_ok=True)
+            for d in global_skills:
+                fm = read_frontmatter_name(d / "SKILL.md")
+                copy_clean_skill_dir(d, store_skills_dir / fm)
+                agent_store_synced += 1
+
     return {
         "removed_junctions": removed_junctions,
         "user_cursor_skills": len(valid_names),
         "user_cursor_commands": cmd_count,
+        "agent_store_skills_synced": agent_store_synced,
     }
 
 

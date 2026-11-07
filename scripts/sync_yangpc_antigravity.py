@@ -230,6 +230,52 @@ def apply_bundle(source_dir: Path) -> dict:
                 if f.is_file() and adapt_home_paths_in_file(f, HOME):
                     adapted_files += 1
 
+    # 自動同步目標電腦 GitHub 各專案下的 scripts/multi_model_gate.py 與本機 DPAPI 金鑰工蜂腳本
+    gate_src = target_gemini / "scripts" / "multi_model_gate.py"
+    github_root = HOME / "Documents" / "GitHub"
+    synced_repos = 0
+    if gate_src.is_file() and github_root.is_dir():
+        for repo_gate in github_root.glob("*/scripts/multi_model_gate.py"):
+            try:
+                shutil.copy2(gate_src, repo_gate)
+                synced_repos += 1
+            except OSError:
+                pass
+
+    local_app_data = Path(os.environ.get("LOCALAPPDATA", str(HOME / "AppData" / "Local")))
+    us3c_secrets_dir = local_app_data / "US3C" / "Secrets"
+    ps1_src = target_gemini / "scripts" / "Set-ModelApiKey.ps1"
+    dpapi_migrated = False
+    if ps1_src.is_file():
+        try:
+            us3c_secrets_dir.mkdir(parents=True, exist_ok=True)
+            shutil.copy2(ps1_src, us3c_secrets_dir / "Set-ModelApiKey.ps1")
+            vault_file = us3c_secrets_dir / "multi-model-keys.dpapi.xml"
+            legacy_env = target_gemini / "secrets" / "multi_model_keys.env"
+            if os.name == "nt" and not vault_file.is_file() and legacy_env.is_file():
+                raw_env = legacy_env.read_text(encoding="utf-8", errors="ignore")
+                if "API_KEY=" in raw_env:
+                    import subprocess
+                    v_lit = str(vault_file).replace("'", "''")
+                    e_lit = str(legacy_env).replace("'", "''")
+                    ps_cmd = (
+                        "$ErrorActionPreference='Stop';"
+                        f"$txt=Get-Content -LiteralPath '{e_lit}' -Raw -Encoding UTF8;"
+                        "$sec=ConvertTo-SecureString -String $txt -AsPlainText -Force;"
+                        f"Export-Clixml -InputObject $sec -LiteralPath '{v_lit}' -Force"
+                    )
+                    res = subprocess.run(["powershell.exe", "-NoProfile", "-NonInteractive", "-Command", ps_cmd], capture_output=True)
+                    if res.returncode == 0 and vault_file.is_file():
+                        legacy_env.write_text(
+                            "# Plaintext API keys removed.\n"
+                            "# Active keys are encrypted with Windows DPAPI at:\n"
+                            "#   %LOCALAPPDATA%\\US3C\\Secrets\\multi-model-keys.dpapi.xml\n",
+                            encoding="utf-8",
+                        )
+                        dpapi_migrated = True
+        except Exception:
+            pass
+
     # 呼叫 sync_skills_to_cloud_repos.py 內建之本機 Cursor 真實目錄同步與 sync_skills_to_agents.py
     scripts_dir = target_gemini / "scripts"
     if str(scripts_dir) not in sys.path:
@@ -248,6 +294,8 @@ def apply_bundle(source_dir: Path) -> dict:
         "antigravity_config_skills": len(skill_dirs),
         "antigravity_internal_skills": len(skill_dirs),
         "home_paths_adapted": adapted_files,
+        "github_repos_gate_synced": synced_repos,
+        "dpapi_auto_migrated": dpapi_migrated,
         "cursor_user_sync": cursor_sync_info,
     }
 
