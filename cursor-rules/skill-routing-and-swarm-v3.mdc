@@ -30,7 +30,7 @@ alwaysApply: true
 
 - **Phase 0 (`🛡️ Agent 0` 零區安全守門員)**：**`deepseek-flash`**（協同：`gemini-4-argon`）
 - **Phase 1 (`🧠 Agent A` 知識圖譜與架構發想)**：**`gemini-4-argon`**（協同：`deepseek-flash`）
-- **Phase 2 (`😈 Agent B` 魔鬼代言人紅隊批判)**：**`grok-4.7`**（協同：TypeSafe `jev-1.13.0` 量化風險校準）
+- **Phase 2 (`😈 Agent B` 魔鬼代言人紅隊批判)**：**`grok-4.7`**（協同：TypeSafe `jev-1.13.0` 雙模校準——當配置 `TYPESAFE_API_KEY` 或 `jev` MCP 時呼叫 TypeSafe JEV API；未配置時由 `scripts/multi_model_gate.py` 自動啟用正式授權之 `GPT Decision + local_rule_summary_v1` 校準替代方案）
 - **Phase 3 (`⚖️ Agent C` 意見整合與決策收斂)**：**`gemini-4-argon`** / **`qwen-3.8-max`**
 - **Phase 4 (`🛠️ Agent D` 實作工蜂 & Fixer 除錯救援)**：日常快改 **`deepseek-flash`**；跨模組核心重構或**連續 2 次失敗觸發 Fixer** 強制升級 **`qwen-3.8-max`**
 - **Phase 5 (`🔍 Agent E` 驗屍官 & 終審 QA)**：**`deepseek-flash` + `grok-4.7`** + **`gemini-4-argon`**（視覺與多模態 E2E）

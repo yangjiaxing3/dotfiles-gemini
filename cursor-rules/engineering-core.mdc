@@ -13,7 +13,7 @@ alwaysApply: true
    - 🛑 **嚴禁簡化**：3D 模擬器與空間幾何公式、財務與計價核算公式、硬體/IoT 校準與跨庫 API 契約。
 3. **[CRITICAL] 分級會審門禁 (Cross-Model Simplification Gate)**：
    - **日常快改（`< 15` 行、單檔微調或明確 Bug 修復）**：自動走輕量通道（免外部 API 會審），但強制跑真實測試（`pytest` / `vitest` / `tsc`）。
-   - **架構簡化、移除抽象層/Wrapper、刪除檔案或單次刪減 `> 15` 行邏輯**：強制執行專案內跨平台閘門腳本 `python scripts/multi_model_gate.py review --prompt "..." --git-diff --output temp_multi_review.json`（若專案無 `scripts/` 則回退執行 `~/.gemini/scripts/multi_model_gate.py`），調動 Ruflo Swarm V3 五大異質模型會審。
+   - **架構簡化、移除抽象層/Wrapper、刪除檔案或單次刪減 `> 15` 行邏輯**：強制執行專案內跨平台閘門腳本 `python scripts/multi_model_gate.py review --prompt "..." --git-diff --output temp_multi_review.json`（若專案無 `scripts/` 則回退執行 `~/.gemini/scripts/multi_model_gate.py`），調動 Ruflo Swarm V3 五大異質模型會審（當環境配置 `TYPESAFE_API_KEY` 時呼叫 TypeSafe `jev-1.13` API；未配置時自動啟用正式授權之 `GPT Decision + local_rule_summary_v1` 校準替代方案）。
 4. **妥協留痕 (`shortcut:`)**：採取有上限捷徑時強制加註 `// shortcut: <上限條件>, <何時該升級>`。
 5. **收尾誠實揭露與極簡執行回條 (Final-Turn Compact Lean-Triad Receipt — 嚴禁中繼回合重複輸出)**：
    - **🚫 嚴禁輸出回條之場景（防 Token 浪費）**：等待背景任務（`run_command` / subagent）完成的中繼進度回覆、澄清提問、純問答或閒聊，或同一任務無新程式碼變更時，**絕對禁止**附上執行回條。
@@ -24,7 +24,7 @@ alwaysApply: true
    - 🧰 **Skills**：`<Skills>`
    - 🧭 **Graphify**：`<節點 / update>`
    - ✂️ **Ponytail**：`+<新增> / -<刪除> 行 (shortcut: <無或註記>)`
-   - ⚖️ **Gate & QA**：`<會審門禁與測試通過數>`
+   - ⚖️ **Gate & QA**：`<multi_model_gate 真實 verdict/score/req_ids（若未跑腳本強制填「未執行 multi_model_gate」，嚴禁單一模型自評冒充）＋ 測試通過數>`
    - ⚠️ **邊界**：`<略過項目與風險>`
    ```
 

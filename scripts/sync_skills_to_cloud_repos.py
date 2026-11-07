@@ -53,6 +53,7 @@ US3C_FAMILY_REPOS = [
     "us3c_mvp",
     "usdwarrantynew",
     "beikeshop_v3_jx",
+    "us3c-shopee-dashboard",
     "iMCheck",
     "logistic_driver",
     "price_crawler",
@@ -427,6 +428,9 @@ def sync_local_cursor_user_dirs(global_skills: list[Path]) -> dict:
     """
     GLOBAL_CURSOR_SKILLS_DIR.mkdir(parents=True, exist_ok=True)
     GLOBAL_CURSOR_COMMANDS_DIR.mkdir(parents=True, exist_ok=True)
+    GLOBAL_CURSOR_RULES_DIR.mkdir(parents=True, exist_ok=True)
+    for mdc in (HOME / ".gemini" / "cursor-rules").glob("*.mdc"):
+        shutil.copy2(mdc, GLOBAL_CURSOR_RULES_DIR / mdc.name)
 
     removed_junctions = 0
     for item in list(GLOBAL_CURSOR_SKILLS_DIR.iterdir()):
