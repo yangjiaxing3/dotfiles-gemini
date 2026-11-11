@@ -58,6 +58,9 @@
 !config/skills/**/*.toml
 !config/skills/**/*.jsonc
 
+# 其餘 Skill 內資產（圖片、xsd 結構描述、無副檔名腳本、LICENSE 等）一併放行，兩台電腦才會完全一致；下方 denylist 仍會擋掉機密／大型二進位
+!config/skills/**/*
+
 # 強制排除 Skills 內可能存在的虛擬環境、套件依賴與快取目錄
 config/skills/**/.venv/
 config/skills/**/.venv/**
@@ -76,3 +79,22 @@ config/skills/**/.github/**
 config/skills/**/.bsk*/
 config/skills/**/.bsk*/**
 config/skills/**/package-lock.json
+
+# 機密與大型二進位 denylist（優先於上方放行）
+config/skills/**/.env
+config/skills/**/.env.*
+!config/skills/**/.env.example
+config/skills/**/*.pem
+config/skills/**/*.key
+config/skills/**/*.pfx
+config/skills/**/*.p12
+config/skills/**/*.sqlite
+config/skills/**/*.db
+config/skills/**/*.pyc
+config/skills/**/*.pyo
+config/skills/**/*.zip
+config/skills/**/*.gz
+config/skills/**/*.tar
+config/skills/**/*.mp4
+config/skills/**/credentials*
+config/skills/**/secrets*
