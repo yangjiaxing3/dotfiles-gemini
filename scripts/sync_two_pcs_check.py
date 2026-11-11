@@ -21,7 +21,7 @@ ROOTS = {
 HOME_RE = re.compile(rb"[A-Za-z]:[\\/]+Users[\\/]+(?:Jiaxing|" + re.escape(HOME.name.encode()) + rb")", re.I)
 def norm(data, ext):
     """文字檔：CRLF->LF，並把 C:\\Users\\Jiaxing 與本機家目錄都視為 <HOME>（apply 只改寫部分副檔名，.py/.ts 內的寫死路徑屬預期差異）。"""
-    if ext not in TEXT: return data
+    if ext not in TEXT and b"\0" in data[:8192]: return data  # 二進位
     return HOME_RE.sub(b"<HOME>", data.replace(b"\r\n", b"\n"))
 def sha(b): return hashlib.sha256(b).hexdigest()
 def manifest():
@@ -35,12 +35,13 @@ def manifest():
             rel = key if root.is_file() else key + "/" + p.relative_to(root).as_posix()
             out["files"][rel] = {"raw": sha(raw), "norm": sha(norm(raw, p.suffix.lower()))}
     return out
+ROOT_KEYS = list(ROOTS)
 def compare(a, b):
     A, B = a["files"], b["files"]
     groups = {}
     def g(k): return k.split("/")[0] + "/" + k.split("/")[1] if k.count("/") >= 1 else k
     for k in sorted(set(A) | set(B)):
-        grp = "/".join(k.split("/")[:3]) if k.startswith("gemini/") and not k.endswith("GEMINI.md") else "/".join(k.split("/")[:2])
+        grp = next((r for r in sorted(ROOT_KEYS, key=len, reverse=True) if k == r or k.startswith(r + "/")), k)
         s = groups.setdefault(grp, {"A": 0, "B": 0, "same_raw": 0, "same_norm_only": 0, "diff": [], "only_A": [], "only_B": []})
         if k in A: s["A"] += 1
         if k in B: s["B"] += 1
