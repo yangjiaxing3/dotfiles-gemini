@@ -18,12 +18,11 @@ ROOTS = {
     "cursor/skills": HOME / ".cursor/skills",
     "gemini/GEMINI.md": HOME / ".gemini/GEMINI.md",
 }
+HOME_RE = re.compile(rb"[A-Za-z]:[\\/]+Users[\\/]+(?:Jiaxing|" + re.escape(HOME.name.encode()) + rb")", re.I)
 def norm(data, ext):
+    """文字檔：CRLF->LF，並把 C:\\Users\\Jiaxing 與本機家目錄都視為 <HOME>（apply 只改寫部分副檔名，.py/.ts 內的寫死路徑屬預期差異）。"""
     if ext not in TEXT: return data
-    t = data.replace(b"\r\n", b"\n")
-    for h in {str(HOME), str(HOME).replace("\\", "/")}:
-        t = t.replace(h.encode(), b"<HOME>")
-    return t
+    return HOME_RE.sub(b"<HOME>", data.replace(b"\r\n", b"\n"))
 def sha(b): return hashlib.sha256(b).hexdigest()
 def manifest():
     out = {"home": str(HOME), "files": {}}
