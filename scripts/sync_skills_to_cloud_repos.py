@@ -470,12 +470,10 @@ def sync_repo(repo: Path, global_skills: list[Path], rules_only: bool = False) -
     except OSError:
         same_target = False
 
+    # 不再寫入舊式 .agent/skills：Cursor 文件與 Antigravity 文件的共同標準是 .agents/skills，
+    # 同時寫兩份會讓 Antigravity（兩個目錄都讀）列出重複 skill。
     legacy_agent_skills = repo / ".agent" / "skills"
     has_legacy = False
-    try:
-        has_legacy = legacy_agent_skills.is_dir() and legacy_agent_skills.resolve() != agents_skills_dst.resolve()
-    except OSError:
-        has_legacy = False
 
     # 僅移除「對立產業專屬技能」(excluded_skills) 與重複之 source-command-*，保留專案既有客製技能（如 seo-looping, openseo-*）
     cleanup_dirs = [agents_skills_dst]
