@@ -542,12 +542,13 @@ def sync_repo(repo: Path, global_skills: list[Path], rules_only: bool = False) -
 
 def sync_local_cursor_user_dirs(global_skills: list[Path]) -> dict:
     """
-    1. 修復本機 Windows ~/.cursor/skills 的 NTFS Directory Junction 陷阱，轉為真實實體目錄並同步 ~/.cursor/commands/*.md。
+    1. 修復本機 Windows ~/.cursor/skills 的 NTFS Directory Junction 陷阱，轉為真實實體目錄。
+       不再把 SKILL.md 複製成 ~/.cursor/commands/*.md（會與同名 skill 在「/」選單重複）；
+       並清除先前由本腳本產生、內容與 SKILL.md 完全相同的 command 副本（自訂 command 不動）。
     2. 同步至 Cursor 跨機雲端 AgentStore (`LOCALAPPDATA/Cursor/AgentStores/cursor_agent_stores/u*/files/skills`)，
        讓同一 Cursor 帳號在 `DESKTOP-N1NJDUH` 與 `YangPC` 之間自動雲端同步 User Skills。
     """
     GLOBAL_CURSOR_SKILLS_DIR.mkdir(parents=True, exist_ok=True)
-    GLOBAL_CURSOR_COMMANDS_DIR.mkdir(parents=True, exist_ok=True)
     GLOBAL_CURSOR_RULES_DIR.mkdir(parents=True, exist_ok=True)
     for mdc in (HOME / ".gemini" / "cursor-rules").glob("*.mdc"):
         shutil.copy2(mdc, GLOBAL_CURSOR_RULES_DIR / mdc.name)
@@ -574,13 +575,17 @@ def sync_local_cursor_user_dirs(global_skills: list[Path]) -> dict:
         if child.name not in valid_names and child.is_dir():
             shutil.rmtree(child, ignore_errors=True)
 
-    allowed_cmds = SHARED_SLASH_COMMAND_SKILLS | STOREASY_ONLY_SKILLS | US3C_ONLY_SKILLS
-    cmd_count = 0
-    for d in global_skills:
-        fm = read_frontmatter_name(d / "SKILL.md")
-        if fm in allowed_cmds or d.name in allowed_cmds:
-            shutil.copy2(d / "SKILL.md", GLOBAL_CURSOR_COMMANDS_DIR / f"{fm}.md")
-            cmd_count += 1
+    cmd_pruned = 0
+    if GLOBAL_CURSOR_COMMANDS_DIR.is_dir():
+        for d in global_skills:
+            fm = read_frontmatter_name(d / "SKILL.md")
+            twin = GLOBAL_CURSOR_COMMANDS_DIR / f"{fm}.md"
+            try:
+                if twin.is_file() and twin.read_bytes() == (d / "SKILL.md").read_bytes():
+                    twin.unlink()
+                    cmd_pruned += 1
+            except OSError:
+                pass
 
     # 同步至 Cursor AgentStores (u*/files/skills) 實現跨電腦 User Skills 雲端同步
     agent_store_synced = 0
@@ -600,7 +605,7 @@ def sync_local_cursor_user_dirs(global_skills: list[Path]) -> dict:
     return {
         "removed_junctions": removed_junctions,
         "user_cursor_skills": len(valid_names),
-        "user_cursor_commands": cmd_count,
+        "cursor_command_copies_pruned": cmd_pruned,
         "agent_store_skills_synced": agent_store_synced,
     }
 

@@ -11,11 +11,11 @@ SKIP = {".venv", "venv", "node_modules", ".git", "__pycache__", ".unlighthouse",
 TEXT = {".md", ".mdc", ".json", ".ps1", ".py", ".ts", ".tsx", ".js", ".css", ".txt", ".yml", ".yaml", ".html", ".svg", ".sh", ".mjs", ".jsx", ".mdx", ".sql", ".toml", ".jsonc"}
 ROOTS = {
     "gemini/config/skills": HOME / ".gemini/config/skills",
-    "gemini/antigravity/skills": HOME / ".gemini/antigravity/skills",
     "gemini/global_workflows": HOME / ".gemini/antigravity/global_workflows",
     "gemini/cursor-rules-mirror": HOME / ".gemini/cursor-rules",
     "cursor/rules": HOME / ".cursor/rules",
     "cursor/skills": HOME / ".cursor/skills",
+    "cursor/commands": HOME / ".cursor/commands",
     "gemini/GEMINI.md": HOME / ".gemini/GEMINI.md",
 }
 HOME_RE = re.compile(rb"[A-Za-z]:[\\/]+Users[\\/]+(?:Jiaxing|" + re.escape(HOME.name.encode()) + rb")", re.I)

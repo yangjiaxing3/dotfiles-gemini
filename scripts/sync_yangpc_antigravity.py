@@ -192,15 +192,12 @@ def apply_bundle(source_dir: Path) -> dict:
             if src_sub.is_dir():
                 copy_clean_tree(src_sub, target_gemini / rel_sub)
 
-    # 確保 ~/.gemini/antigravity/skills 與 ~/.gemini/config/skills 100% 對齊
+    # Antigravity 只讀 ~/.gemini/config/skills（唯一管理處）；不再鏡像到 ~/.gemini/antigravity/skills（會讓 IDE 重複列出）。
     cfg_skills = target_gemini / "config" / "skills"
-    ag_skills = target_gemini / "antigravity" / "skills"
-    ag_skills.mkdir(parents=True, exist_ok=True)
     skill_dirs = []
     if cfg_skills.is_dir():
         for s_dir in sorted(cfg_skills.iterdir()):
             if s_dir.is_dir() and not s_dir.is_junction() and (s_dir / "SKILL.md").is_file():
-                copy_clean_tree(s_dir, ag_skills / s_dir.name)
                 skill_dirs.append(s_dir)
 
     # 同步 Cursor 全域規則 (~/.cursor/rules/*.mdc)
@@ -288,15 +285,25 @@ def apply_bundle(source_dir: Path) -> dict:
     except Exception as e:
         cursor_sync_info = {"error": str(e)}
 
+    # Claude Code / Codex：同步實體副本（不再用 Junction）
+    agents_sync_info = {}
+    try:
+        import sync_skills_to_agents as ssa
+
+        r = ssa.run(prune=True)
+        agents_sync_info = {k: ({kk: (len(vv) if isinstance(vv, list) else vv) for kk, vv in v.items()} if isinstance(v, dict) else v) for k, v in r.items() if k != "problems"}
+    except Exception as e:
+        agents_sync_info = {"error": str(e)}
+
     return {
         "mode": "apply",
         "target_home": str(HOME),
         "antigravity_config_skills": len(skill_dirs),
-        "antigravity_internal_skills": len(skill_dirs),
-        "home_paths_adapted": adapted_files,
+                "home_paths_adapted": adapted_files,
         "github_repos_gate_synced": synced_repos,
         "dpapi_auto_migrated": dpapi_migrated,
         "cursor_user_sync": cursor_sync_info,
+        "agents_copy_sync": agents_sync_info,
     }
 
 
