@@ -99,6 +99,6 @@ One-shot report, changes no code.
 
 ## ⚠️ Gotchas (避坑指南)
 - **語言覆寫原則**：審計報告一律使用**極簡直白的繁體中文**撰寫，並附上可點擊的 `[檔名](file:///...)` 連結。
-- **🛑 審計後欲執行簡化，強制走 Ruflo Swarm V3 全模型會審 (`/multi-agent-mode` / `/subagent-driven-development`)**：`/ponytail-audit` 產出的刪減清單僅為提案；實際動手簡化架構前，必須經由 `deepseek-flash`、`gemini-4-argon`、`grok-4.7`、TypeSafe `jev-1.13.0`、`qwen-3.8-max` 全模型矩陣交叉確認合理且獲使用者同意，嚴禁單一 Agent 自作主張大砍程式碼。
+- **🛑 審計後欲執行簡化，強制走 Ruflo Swarm V3 全模型會審 (`/multi-agent-mode` / `/subagent-driven-development`)**：`/ponytail-audit` 產出的刪減清單僅為提案；實際動手簡化架構前，必須經由 `deepseek-flash`、`gemini-4-carbon`、`grok-4.7`、TypeSafe `jev-1.13.0`、`qwen-3.8-max` 全模型矩陣交叉確認合理且獲使用者同意，嚴禁單一 Agent 自作主張大砍程式碼。
 - **🛑 區分「領域複雜度」與「過度工程」**：3D 模擬器空間擺放計算、DXF 解析器、租金材積公式屬於「必要的領域複雜度 (Essential Domain Complexity)」，**嚴禁**列為 Lean 刪減目標。
 - **刪死碼前必查全庫與圖譜**：宣稱某段程式碼或 helper 未使用前，必須先透過 `graphify` 或全域 `grep`（含測試、設定檔、動態字串引用）確認真的零引用。

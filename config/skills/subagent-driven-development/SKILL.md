@@ -44,7 +44,7 @@ digraph process {
         "Dispatch spec reviewer subagent (DeepSeek-V4.1-Flash + jev-1.13.0)" [shape=box];
         "Spec reviewer subagent confirms code matches spec?" [shape=diamond];
         "Implementer subagent fixes spec gaps" [shape=box];
-        "Dispatch code quality reviewer subagent (grok-4.7 / gemini-4-argon)" [shape=box];
+        "Dispatch code quality reviewer subagent (grok-4.7 / gemini-4-carbon)" [shape=box];
         "Code quality reviewer subagent approves?" [shape=diamond];
         "Implementer subagent fixes quality issues" [shape=box];
         "Mark task complete in TodoWrite" [shape=box];
@@ -52,7 +52,7 @@ digraph process {
 
     "Read plan, extract all tasks with full text, note context, create TodoWrite" [shape=box];
     "More tasks remain?" [shape=diamond];
-    "Dispatch final code reviewer subagent (grok-4.7 + gemini-4-argon)" [shape=box];
+    "Dispatch final code reviewer subagent (grok-4.7 + gemini-4-carbon)" [shape=box];
     "Use superpowers:finishing-a-development-branch" [shape=box style=filled fillcolor=lightgreen];
 
     "Read plan, extract all tasks with full text, note context, create TodoWrite" -> "Dispatch implementer subagent (DeepSeek-V4.1-Flash / qwen-3.8-max)";
@@ -64,15 +64,15 @@ digraph process {
     "Dispatch spec reviewer subagent (DeepSeek-V4.1-Flash + jev-1.13.0)" -> "Spec reviewer subagent confirms code matches spec?";
     "Spec reviewer subagent confirms code matches spec?" -> "Implementer subagent fixes spec gaps" [label="no"];
     "Implementer subagent fixes spec gaps" -> "Dispatch spec reviewer subagent (DeepSeek-V4.1-Flash + jev-1.13.0)" [label="re-review"];
-    "Spec reviewer subagent confirms code matches spec?" -> "Dispatch code quality reviewer subagent (grok-4.7 / gemini-4-argon)" [label="yes"];
-    "Dispatch code quality reviewer subagent (grok-4.7 / gemini-4-argon)" -> "Code quality reviewer subagent approves?";
+    "Spec reviewer subagent confirms code matches spec?" -> "Dispatch code quality reviewer subagent (grok-4.7 / gemini-4-carbon)" [label="yes"];
+    "Dispatch code quality reviewer subagent (grok-4.7 / gemini-4-carbon)" -> "Code quality reviewer subagent approves?";
     "Code quality reviewer subagent approves?" -> "Implementer subagent fixes quality issues" [label="no"];
-    "Implementer subagent fixes quality issues" -> "Dispatch code quality reviewer subagent (grok-4.7 / gemini-4-argon)" [label="re-review"];
+    "Implementer subagent fixes quality issues" -> "Dispatch code quality reviewer subagent (grok-4.7 / gemini-4-carbon)" [label="re-review"];
     "Code quality reviewer subagent approves?" -> "Mark task complete in TodoWrite" [label="yes"];
     "Mark task complete in TodoWrite" -> "More tasks remain?";
     "More tasks remain?" -> "Dispatch implementer subagent (DeepSeek-V4.1-Flash / qwen-3.8-max)" [label="yes"];
-    "More tasks remain?" -> "Dispatch final code reviewer subagent (grok-4.7 + gemini-4-argon)" [label="no"];
-    "Dispatch final code reviewer subagent (grok-4.7 + gemini-4-argon)" -> "Use superpowers:finishing-a-development-branch";
+    "More tasks remain?" -> "Dispatch final code reviewer subagent (grok-4.7 + gemini-4-carbon)" [label="no"];
+    "Dispatch final code reviewer subagent (grok-4.7 + gemini-4-carbon)" -> "Use superpowers:finishing-a-development-branch";
 }
 ```
 
@@ -87,8 +87,8 @@ To execute these phases and eliminate same-model blind spots, use explicit ortho
   - **Command**: `npx ruflo@latest agent spawn -t reviewer --model DeepSeek-V4.1-Flash` (with TypeSafe `jev-1.13.0` calibrated scoring)
   - **Why**: Spec compliance is a fast deterministic checklist task where `DeepSeek-V4.1-Flash` + `jev-1.13.0` verify 100% requirement coverage at sub-second latency.
 - `./code-quality-reviewer-prompt.md` - Dispatch adversarial code quality reviewer subagent (`😈 Agent B / E-Quality`)
-  - **Command**: `npx ruflo@latest agent spawn -t qa --model grok-4.7` (or `--model gemini-4-argon` for visual/multimodal UI review)
-  - **Why**: `grok-4.7` provides zero-sycophancy adversarial code review from an orthogonal model family, catching edge cases that the implementer missed; `gemini-4-argon` audits multimodal UI/UX.
+  - **Command**: `npx ruflo@latest agent spawn -t qa --model grok-4.7` (or `--model gemini-4-carbon` for visual/multimodal UI review)
+  - **Why**: `grok-4.7` provides zero-sycophancy adversarial code review from an orthogonal model family, catching edge cases that the implementer missed; `gemini-4-carbon` audits multimodal UI/UX.
 - `./fixer-prompt.md` - Dispatch dead-end Fixer subagent (`🛠️ Agent D-Fixer`)
   - **Command**: `npx ruflo@latest agent spawn -t fixer --model qwen-3.8-max`
   - **Why**: When tests or reviews fail repeatedly (>= 2 identical errors or > 3 review rejections), a fresh zero-context `qwen-3.8-max` Fixer surgically diagnoses root causes from first principles.

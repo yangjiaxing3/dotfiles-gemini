@@ -125,4 +125,6 @@ For these directions, there is **no single official package**. Build with native
 
 ## ⚠️ Gotchas (避坑指南)
 - **禁止廉價 AI 模板感 (Anti-Slop)**：避免過度使用無意義的紫藍漸層、千篇一律的三欄卡片與脫離業務語境的假數字。
+- **嚴禁 UI Emoji，統一使用乾淨 SVG 圖示**：介面標題、KPI 卡、徽章、按鈕、表格與提示文字一律禁止使用任何 Emoji；需要視覺引導時，適當使用內嵌 SVG 或 `lucide-react` 向量圖示（`w-3.5 h-3.5` 或 `w-4 h-4`）。
+- **按鈕極簡化（2～4 字或純 Icon）與去冗餘說明**：所有操作按鈕強制精簡為 **2～4 個字**（如 `新增批次`、`匯出 Excel`、`顯示月薪`）或直接使用 **純 SVG Icon 按鈕**（附 `title` 與 `aria-label`）；移除標題下方重複語意的冗餘說明文字。
 - **日期與表單無障礙**：所有 `<input type="date" lang="en" />` 強制加註 `lang="en"`；互動按鈕需具備明確 `title` 或 `aria-label` 與鍵盤焦點狀態。

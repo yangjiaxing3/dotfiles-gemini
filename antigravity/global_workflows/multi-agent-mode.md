@@ -11,12 +11,12 @@ AI 必須依序扮演六個獨立角色（Phase 0 ~ Phase 5），每個角色有
 
 | 階段 | 角色代號 | 核心職責 | 主力路由模型 (Primary Model) | 升級 / 協同模型 (Escalation / Co-Model) |
 | :--- | :--- | :--- | :--- | :--- |
-| **Phase 0** | 🛡️ **Agent 0** | 零區安全守門員 (Boundary Sentinel) | `DeepSeek-V4.1-Flash` | `gemini-4-argon` |
-| **Phase 1** | 🧠 **Agent A** | 知識圖譜與架構發想 (Ideation & Graph) | `gemini-4-argon` | `DeepSeek-V4.1-Flash` (高速 CoT 輔助) |
+| **Phase 0** | 🛡️ **Agent 0** | 零區安全守門員 (Boundary Sentinel) | `DeepSeek-V4.1-Flash` | `gemini-4-carbon` |
+| **Phase 1** | 🧠 **Agent A** | 知識圖譜與架構發想 (Ideation & Graph) | `gemini-4-carbon` | `DeepSeek-V4.1-Flash` (高速 CoT 輔助) |
 | **Phase 2** | 😈 **Agent B** | 魔鬼代言人紅隊批判 (Red Teaming) | `grok-4.7` | TypeSafe `jev-1.13.0` (量化風險校準) |
-| **Phase 3** | ⚖️ **Agent C** | 意見整合與決策收斂 (Synthesis) | `gemini-4-argon` (Orchestrator) | `qwen-3.8-max` |
+| **Phase 3** | ⚖️ **Agent C** | 意見整合與決策收斂 (Synthesis) | `gemini-4-carbon` (Orchestrator) | `qwen-3.8-max` |
 | **Phase 4** | 🛠️ **Agent D** | 外科手術實作工蜂 & Fixer 救援 | 日常快改：`DeepSeek-V4.1-Flash`<br/>核心重構：`qwen-3.8-max` | 連續 2 次失敗強制升級：`qwen-3.8-max` |
-| **Phase 5** | 🔍 **Agent E** | 驗屍官逆向推演與終審 QA (Pre-mortem) | `DeepSeek-V4.1-Flash` + `grok-4.7` | `gemini-4-argon` (視覺與多模態 E2E) |
+| **Phase 5** | 🔍 **Agent E** | 驗屍官逆向推演與終審 QA (Pre-mortem) | `DeepSeek-V4.1-Flash` + `grok-4.7` | `gemini-4-carbon` (視覺與多模態 E2E) |
 
 ---
 
@@ -40,13 +40,13 @@ AI 必須依序扮演六個獨立角色（Phase 0 ~ Phase 5），每個角色有
 
 ### Phase 1: 🧠 Agent A — 知識圖譜與優化發想 (Knowledge Mapping & Ideation)
 
-**模型路由**: `gemini-4-argon` (超大上下文、跨專案知識圖譜與多模態架構推理) + `DeepSeek-V4.1-Flash` (高速 CoT 發想)
-**呼叫指令**: `claude-flow agent spawn -t ideation --model gemini-4-argon`
+**模型路由**: `gemini-4-carbon` (超大上下文、跨專案知識圖譜與多模態架構推理) + `DeepSeek-V4.1-Flash` (高速 CoT 發想)
+**呼叫指令**: `claude-flow agent spawn -t ideation --model gemini-4-carbon`
 **角色定位**：創新架構師，負責全局視角建立與腦力激盪。
 
 **執行步驟**：
 1. **隔離上下文傳遞 (Context Federation)**：嚴禁盲目傾倒無關檔案。優先結合 `graphify` 知識圖譜傳遞與任務直接相關的 API 介面定義或 1-hop 依賴樹。
-2. 讓 `gemini-4-argon` 進行深度結構推理，提出 **至少 2~3 種** 可能的優化方案。
+2. 讓 `gemini-4-carbon` 進行深度結構推理，提出 **至少 2~3 種** 可能的優化方案。
 3. 每個方案必須包含：
    - 方案名稱與一句話描述
    - 技術實作概要
@@ -65,7 +65,7 @@ AI 必須依序扮演六個獨立角色（Phase 0 ~ Phase 5），每個角色有
 **角色定位**：魔鬼代言人，啟動「正交維度交叉掃描」(Orthogonal Dimension Scanning) 審查每個方案，徹底消除「同源模型自審盲點」。
 
 **執行步驟**：
-1. **送交審查**：將 Agent A (`gemini-4-argon`) 產出的草案交由異構模型 `grok-4.7` 進行無情批判。
+1. **送交審查**：將 Agent A (`gemini-4-carbon`) 產出的草案交由異構模型 `grok-4.7` 進行無情批判。
 2. 針對以下 5 個維度進行極端破壞性分析：
    - ☠️ **資料毒化 (Data Poisoning)**：若傳入極端值、空值或髒資料，防禦機制會否崩潰？
    - 🔄 **併發與狀態 (Concurrency)**：多個 User 同時操作時，資料會不會髒寫或 Race Condition？
@@ -80,8 +80,8 @@ AI 必須依序扮演六個獨立角色（Phase 0 ~ Phase 5），每個角色有
 
 ### Phase 3: ⚖️ Agent C — 意見整合與最終方案 (Synthesis & Simplicity First)
 
-**模型路由**: `gemini-4-argon` / Primary LLM (Antigravity Orchestrator)
-**角色定位**：技術決策者，綜合 Agent A (`gemini-4-argon`) 的創意與 Agent B (`grok-4.7`) 的紅隊批判，產出隔離污染的最終設計文件。
+**模型路由**: `gemini-4-carbon` / Primary LLM (Antigravity Orchestrator)
+**角色定位**：技術決策者，綜合 Agent A (`gemini-4-carbon`) 的創意與 Agent B (`grok-4.7`) 的紅隊批判，產出隔離污染的最終設計文件。
 
 **執行步驟**：
 1. 吸收 Agent A 的架構與 Agent B 的批判，進行決策收斂。
@@ -113,7 +113,7 @@ AI 必須依序扮演六個獨立角色（Phase 0 ~ Phase 5），每個角色有
 
 ### Phase 5: 🔍 Agent E — 驗屍官與最終審查 (Goal-Driven Pre-mortem)
 
-**模型路由**: `DeepSeek-V4.1-Flash` + `grok-4.7` 負責逆向邏輯推演與契約審查 + `gemini-4-argon` / 原生 Browser Subagent 負責視覺多模態驗證
+**模型路由**: `DeepSeek-V4.1-Flash` + `grok-4.7` 負責逆向邏輯推演與契約審查 + `gemini-4-carbon` / 原生 Browser Subagent 負責視覺多模態驗證
 **呼叫指令**: `claude-flow agent spawn -t qa --model DeepSeek-V4.1-Flash`
 **角色定位**：驗屍官 + QA 工程師。
 

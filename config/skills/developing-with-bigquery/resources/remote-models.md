@@ -12,7 +12,7 @@ OPTIONS (ENDPOINT = 'endpoint_name');
 
 ### Available Endpoints
 
-* **Generative**: `gemini-2.5-pro`, `gemini-2.5-flash`
+* **Generative**: `gemini-4-carbon`
 * **Embedding**: `text-embedding-005`, `text-multilingual-embedding-002`,
   `gemini-embedding-001`.
 

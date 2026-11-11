@@ -26,11 +26,11 @@ This skill implements an "Agentic" approach to RAG, where retrieval is treated a
   - **Calibration**: Pair with TypeSafe **`jev-1.13.0`** (`evaluate_comparability` / `score`) to filter out low-relevance or mismatched-unit candidates before synthesis.
   - **Why**: `DeepSeek-V4.1-Flash` executes rapid iterative retrieval loops at minimal latency, while `jev-1.13.0` prevents noisy chunks from polluting the synthesizer context.
 
-### 3. Deep Synthesis & Adversarial Fact-Check (`gemini-4-argon` + `grok-4.7`)
+### 3. Deep Synthesis & Adversarial Fact-Check (`gemini-4-carbon` + `grok-4.7`)
 - **Swarm Routing for Synthesis**: Once curated context pieces are gathered, hand them over to the 1M+ context flagship model for synthesis, backed by red-team hallucination checking:
-  - **Command**: `npx ruflo@latest agent spawn -t analyst --model gemini-4-argon` (or `--model qwen-3.8-max` for structured Traditional Chinese reports)
+  - **Command**: `npx ruflo@latest agent spawn -t analyst --model gemini-4-carbon` (or `--model qwen-3.8-max` for structured Traditional Chinese reports)
   - **Adversarial Verification**: `npx ruflo@latest agent spawn -t reviewer --model grok-4.7` (audits citations and flags ungrounded claims).
-  - **Why**: `gemini-4-argon` connects cross-module dependencies across massive contexts, while `grok-4.7` ensures zero hallucinated citations.
+  - **Why**: `gemini-4-carbon` connects cross-module dependencies across massive contexts, while `grok-4.7` ensures zero hallucinated citations.
 
 ## Best Practices for the Agent
 - **Graph-First Retrieval**: When `graphify-out/graph.json` exists, query graph nodes/paths first before raw text grep.

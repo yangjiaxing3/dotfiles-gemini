@@ -35,17 +35,22 @@
        - **硬體/IoT 校準與跨庫契約**：攝影機 FOV 角度計算、IoT 狀態判定、API 欄位契約與資安權限校驗。
   3. **[CRITICAL] 架構簡化強制異質多模型會審 (Cross-Model Simplification Gate — 嚴禁單一 Agent 自作主張)**：
      - 凡涉及**架構簡化、移除抽象層/Wrapper、合併模組、刪除檔案或單次刪減 > 15 行邏輯**，**絕對禁止**單一模型自作主張直接修改！
-     - 必須強制執行真實外部 API 會審閘門腳本（優先執行專案內 `python scripts/multi_model_gate.py review --prompt "..." --git-diff --output temp_multi_review.json`，若專案無 `scripts/` 則回退執行 `~/.gemini/scripts/multi_model_gate.py`；金鑰自動讀取 Windows DPAPI `%LOCALAPPDATA%\US3C\Secrets\multi-model-keys.dpapi.xml` 或 `~/.gemini/secrets/multi_model_keys.env`），真正調動 **Ruflo Swarm V3 全部 5 大異質模型家族** 取得真實 API `request_id` 與 `gate_verdict`（與 `/multi-agent-mode` 及 `/subagent-driven-development` 完全對齊）：
-       1. **`🛡️ Agent 0` (`deepseek-flash` + `gemini-4-argon`)**：檢查工作區邊界與聯動 repo 白名單，防止跨專案誤刪。
-       2. **`🧠 Agent A` (`gemini-4-argon` + `deepseek-flash`)**：憑藉百萬 Context 查 `graphify` 圖譜確認全庫與跨專案呼叫鏈，提出擬簡化清單。
-       3. **`😈 Agent B` (`grok-4.7` + TypeSafe `jev-1.13.0` 雙模校準)**：以異質對抗模型結合量化校準分數（當環境配置 `TYPESAFE_API_KEY` 或 `jev` MCP 時直接呼叫 TypeSafe `jev-1.13`；未配置時自動啟用正式授權之 `GPT Decision + local_rule_summary_v1` 校準替代方案），挑戰該簡化是否誤傷 3D 幾何/財務公式、破壞邊界容錯或影響跨 repo 同步。
-       4. **`⚖️ Agent C` (`gemini-4-argon` + `qwen-3.8-max`)**：收斂正反模型辯證並產出繁體中文 ADR 對照表，向使用者提請核准。
-       5. **`🛠️ Agent D` (`deepseek-flash` 快改 / `qwen-3.8-max` 核心重構與 Fixer)**：僅在獲准後執行最小完整變更。
-       6. **`🔍 Agent E` (`deepseek-flash` + `jev-1.13.0` 雙模規格防漏砍審查 + `grok-4.7` 品質終審 + `gemini-4-argon` 3D/UI 視覺 E2E)**：確認規格 100% 未縮水並跑通真實測試。
+     - **模型調度三鐵律（Cursor Plan & 子代理優先 → 官方直連 API → OpenRouter 最後備援）**：
+       1. **`grok` 直接走 Cursor Plan 內建額度；其他模型優先走 Cursor 子代理（Subagent）額度，額度超過或環境無法分派子代理時才打真實外部 API（`multi_model_gate.py`）**。
+       2. **除非直打官方模型 API（`deepseek_direct`, `qwen_direct`, `gemini_direct`, `typesafe`）都失敗後，才走 OpenRouter API**。
+       3. **Qwen 模型一律固定使用 `qwen-max`**。
+     - 當需呼叫外部 API 會審閘門腳本時（優先執行專案內 `python scripts/multi_model_gate.py review --prompt "..." --git-diff --output temp_multi_review.json`，若專案無 `scripts/` 則回退執行 `~/.gemini/scripts/multi_model_gate.py`；金鑰自動讀取 Windows DPAPI `%LOCALAPPDATA%\US3C\Secrets\multi-model-keys.dpapi.xml` 或 `~/.gemini/secrets/multi_model_keys.env`），真正調動 **Ruflo Swarm V3 全部 5 大異質模型家族** 取得 `request_id` 與 `gate_verdict`（與 `/multi-agent-mode` 及 `/subagent-driven-development` 完全對齊）：
+       1. **`🛡️ Agent 0` (`deepseek-flash` + `gemini-4-carbon`)**：檢查工作區邊界與聯動 repo 白名單，防止跨專案誤刪。
+       2. **`🧠 Agent A` (`gemini-4-carbon` + `deepseek-flash`)**：憑藉百萬 Context 查 `graphify` 圖譜確認全庫與跨專案呼叫鏈，提出擬簡化清單。
+       3. **`😈 Agent B` (`grok-4.7` [Cursor Plan 直出] + TypeSafe `jev-1.13.0` 雙模校準)**：以異質對抗模型結合量化校準分數（當環境配置 `TYPESAFE_API_KEY` 或 `jev` MCP 時直接呼叫 TypeSafe `jev-1.13`；未配置時自動啟用正式授權之 `GPT Decision + local_rule_summary_v1` 校準替代方案），挑戰該簡化是否誤傷 3D 幾何/財務公式、破壞邊界容錯或影響跨 repo 同步。
+       4. **`⚖️ Agent C` (`gemini-4-carbon` + `qwen-max`)**：收斂正反模型辯證並產出繁體中文 ADR 對照表，向使用者提請核准。
+       5. **`🛠️ Agent D` (`deepseek-flash` 快改 / `qwen-max` 核心重構與 Fixer)**：僅在獲准後執行最小完整變更。
+       6. **`🔍 Agent E` (`deepseek-flash` + `jev-1.13.0` 雙模規格防漏砍審查 + `grok-4.7` [Cursor Plan] 品質終審 + `gemini-4-carbon` 3D/UI 視覺 E2E)**：確認規格 100% 未縮水並跑通真實測試。
   4. **偷懶於方案，絕不偷懶於完整性**：變更所觸及的所有呼叫端 (callers)、型別、測試與真實終端機驗證必須一次改完，不留半套。
   5. **妥協留痕 (`shortcut:`)**：若採取有容量或場景上限的捷徑，強制加上單行註解 `// shortcut: <上限條件>, <何時該升級>`（可由 `/ponytail-debt` 盤點）。
-  6. **收尾誠實揭露與極簡執行回條 (Final-Turn Compact Lean-Triad Receipt — 嚴禁中繼回合重複輸出)**：
-     - **🚫 嚴禁輸出回條之場景（防 Token 浪費）**：等待背景任務（`run_command` / subagent）完成的中繼進度回覆、澄清提問、純問答或閒聊，或同一任務無新程式碼變更時，**絕對禁止**附上執行回條。
+  6. **收尾誠實揭露與極簡執行回條 (Final-Turn Compact Lean-Triad Receipt — 嚴禁中繼回合或正文重抄)**：
+     - **🚫 嚴禁輸出回條之場景（防 Token 浪費）**：等待背景任務（`run_command` / subagent）完成的中繼進度回覆、純合併／部署狀態回報、澄清提問、純問答或閒聊，或**同一任務無新程式碼變更時，絕對禁止附上執行回條**。
+     - **🚫 嚴禁正文與回條內容重複（Anti-Duplication Rule）**：回條每欄僅限填寫**關鍵字、路徑、行數或指令結果**（每欄 `<= 60` 字），**嚴禁把正文寫過的結論、PR 編號或背景敘述重抄進回條**；反之，已寫入回條的測試通過數、行數統計與略過邊界，正文**不再重複條列**。
      - **✅ 僅在「任務最終完成交付（Final Delivery Turn）」結尾輸出一次精簡逐行版回條（每項獨立換行，清晰易讀且省去冗長標題）**：
      ```markdown
      ---
@@ -112,29 +117,38 @@
 
 | 階段與代理角色 | 主力模型 (`--model`) | 協同 / 備援模型 | 核心職責與綁定理由 |
 | :--- | :--- | :--- | :--- |
-| **Phase 0：`🛡️ Agent 0` 零區安全守門員** | **`deepseek-flash`** | `gemini-4-argon` | 亞秒級檢查 `boundary-sentinel.md`、工作區路徑越界與 Storeasy 聯動家族白名單。 |
-| **Phase 1：`🧠 Agent A` 知識圖譜與架構發想** | **`gemini-4-argon`** | `deepseek-flash` | 憑藉百萬級 Context 執行 `graphify` 圖譜檢索與跨專案契約對齊。 |
-| **Phase 2：`😈 Agent B` 魔鬼代言人 (Red Team)** | **`grok-4.7`** | TypeSafe `jev-1.13.0`（或授權 GPT+本機規則校準） | 以零盲從對抗風格結合量化校準分數（有 `TYPESAFE_API_KEY` 呼叫 JEV API，未配置時自動切換為授權之 `GPT Decision + local_rule_summary_v1`），對 `Agent A` 進行極限壓力測試。 |
-| **Phase 3：`⚖️ Agent C` 意見整合與決策收斂** | **`gemini-4-argon`** | `qwen-3.8-max` | 收斂正反辯證並輸出繁體中文 ADR 架構決策矩陣供使用者拍板。 |
-| **Phase 4：`🛠️ Agent D` 實作工蜂 & Fixer 救援** | **雙軌制**：<br/>快改 `deepseek-flash`<br/>重構/Fixer **`qwen-3.8-max`** | `gemini-4-argon` | 日常快改走 `deepseek-flash`；跨檔案核心重構或**連續 2 次相同錯誤觸發 Fixer** 時，強制升級 **`qwen-3.8-max`**。 |
-| **Phase 5：`🔍 Agent E` 驗屍官 & 終審 QA** | **`deepseek-flash` + `grok-4.7`** | `gemini-4-argon` (視覺 E2E) | 逆向推演潛在崩潰點，並強制執行真實終端機測試 (`pytest`, `tsc`, `curl`)，搭配 `agent-browser` / `agent-desktop` 結構化 `@ref` Snapshot 與視覺驗收。 |
+| **Phase 0：`🛡️ Agent 0` 零區安全守門員** | **`deepseek-flash`** | `gemini-4-carbon` | 亞秒級檢查 `boundary-sentinel.md`、工作區路徑越界與 Storeasy 聯動家族白名單。 |
+| **Phase 1：`🧠 Agent A` 知識圖譜與架構發想** | **`gemini-4-carbon`** | `deepseek-flash` | 憑藉百萬級 Context 執行 `graphify` 圖譜檢索與跨專案契約對齊。 |
+| **Phase 2：`😈 Agent B` 魔鬼代言人 (Red Team)** | **`grok-4.7` (Cursor Plan 直出)** | TypeSafe `jev-1.13.0`（或授權 GPT+本機規則校準） | 直接走 Cursor Plan 內建 Grok 子代理，結合量化校準分數（有 `TYPESAFE_API_KEY` 呼叫 JEV API，未配置時自動切換為授權之 `GPT Decision + local_rule_summary_v1`），對 `Agent A` 進行極限壓力測試。 |
+| **Phase 3：`⚖️ Agent C` 意見整合與決策收斂** | **`gemini-4-carbon`** | `qwen-max` | 收斂正反辯證並輸出繁體中文 ADR 架構決策矩陣供使用者拍板。 |
+| **Phase 4：`🛠️ Agent D` 實作工蜂 & Fixer 救援** | **雙軌制**：<br/>快改 `deepseek-flash`<br/>重構/Fixer **`qwen-max`** | `gemini-4-carbon` | 日常快改走 `deepseek-flash`；跨檔案核心重構或**連續 2 次相同錯誤觸發 Fixer** 時，強制升級 **`qwen-max`**。 |
+| **Phase 5：`🔍 Agent E` 驗屍官 & 終審 QA** | **`deepseek-flash` + `grok-4.7`** | `gemini-4-carbon` (視覺 E2E) | 逆向推演潛在崩潰點，並強制執行真實終端機測試 (`pytest`, `tsc`, `curl`)，搭配 `agent-browser` / `agent-desktop` 結構化 `@ref` Snapshot 與視覺驗收。 |
 
 ### 角色 × 任務領域動態技能綁定 (Role-Scoped × Task-Aware Skill Binding)
 
 當啟動 `/multi-agent-mode` 或執行 `multi_model_gate.py` 對外呼叫異質模型時，**嚴禁所有 Agent 共用同一套籠統 Prompt，也嚴禁將整輪任務限制在單一 1–2 個 Skill**。系統會透過 `multi_model_gate.py` 內建的 `plan_role_skill_matrix()`（整合 `skill_router.py`），依當輪任務領域（`debug`、`data_analysis`、`ui_frontend`、`backend_api`、`seo_content`、`simplify_refactor`）為每個角色動態組合 **「角色常駐基底技能 + 任務領域專屬技能（每角色 3–5 個精準 Skill，全流水線協同 8–12 個 Skill）」**：
 
 - **`🛡️ Agent 0` (`deepseek-flash`)**：基底 `[accidental-data-loss-prevention, stage-gate-review]` ＋ 隨任務切換（如 `debug` 加掛 `fixer-prompt, agent-tester`；`backend_api` 加掛 `security-audit, agency-testing-api-tester`）。
-- **`🧠 Agent A` (`gemini-4-argon`)**：基底 `[graphify, ponytail-audit]` ＋ 隨任務切換（如 `data_analysis` 加掛 `agency-data-consolidation-agent, storeasy-mini-warehouse-viz, d3-data-visualization`；`ui_frontend` 加掛 `impeccable, frontend-design`）。
+- **`🧠 Agent A` (`gemini-4-carbon`)**：基底 `[graphify, ponytail-audit]` ＋ 隨任務切換（如 `data_analysis` 加掛 `agency-data-consolidation-agent, storeasy-mini-warehouse-viz, d3-data-visualization`；`ui_frontend` 優先加掛 `stageshow, impeccable, design-taste-frontend`）。
 - **`😈 Agent B` (`grok-4.7` 紅隊挑刺)**：基底 `[ponytail-review, agency-engineering-code-reviewer]` ＋ **依任務類型動態換腦**：
   - **Debug 除錯任務**：自動掛載 `[fixer-prompt, agent-code-analyzer, agent-performance-optimizer]`（專抓死循環、Race Condition、狀態污染）。
   - **數據分析 / 報表任務**：自動掛載 `[agency-support-analytics-reporter, ml-best-practices, xlsx]`（專抓統計口徑偏差、除零、稅額進位誤差）。
-  - **前端 UI / 視覺任務 (`ui_frontend`)**：
-    - `🧠 Agent A` 掛載 `[impeccable, frontend-design, agent-desktop]`（優先採 `Operate` 高密度工作台與 `/distill` 去蕪存菁，拒絕裝飾性卡片與假數據）。
-    - `😈 Agent B` 掛載 `[web-design-guidelines, agency-testing-accessibility-auditor, design-taste-frontend]`（專抓中文字折行截斷 `truncate`、RWD 破版、缺 `<input type="date" lang="en" />`、無障礙缺失）。
-    - `⚖️ Agent C & 🛠️ Agent D` 掛載 `[impeccable, emil-design-eng, ponytail]`（落實 3D/Canvas 拖曳 `dragOffset` 1:1 跟手、原地更新不整頁重載、樂觀更新失敗回滾）。
+  - **前端 UI / 視覺任務 (`ui_frontend` — 三位一體優先序：`stageshow` × `impeccable` × `design-taste-frontend`)**：
+    - **原件與動態 UI 優先原則**：在互動原件（`kit/` 幾何）與動態 UI 轉場（`Collapse`, `Roll`, `Swap`, `Count`, `States`）上**優先使用 `stageshow`**，並結合 `impeccable`（高密度工作台與視覺層級）與 `design-taste-frontend`（反 AI 廉價模板審計）。
+    - **全域 UI 圖示與極簡按鈕鐵律（Global UI Icon & Compact Button Standard — 全專案強制適用）**：
+      1. **嚴禁 UI Emoji，優先使用 `PulsoIcon` (`pulsoicon-react`) 動態 SVG 圖示**：所有前端畫面（標題、KPI 卡、徽章、按鈕、表格、狀態列、空狀態與提示文字）**一律禁止使用任何 Emoji**；需要視覺輔助時，優先採用 [`pulsoicon-react`](https://github.com/CityPulso/PulsoIcon.git)（與 `lucide-react` 100% 同名相容，內建 9,955 個專屬微動畫 SVG，支援按鈕自動懸停播放與卡片 `data-icon-trigger` 整卡聯動）或乾淨內嵌 SVG（`w-3.5 h-3.5` 或 `w-4 h-4`，`strokeWidth={1.75~2}`）。
+      2. **按鈕強制 2～4 字或純 Icon，移除冗餘說明文字**：所有操作按鈕文案強制精簡為 **2～4 個字**（動賓結構，如 `新增批次`、`產生明細`、`匯出 Excel`、`顯示月薪`、`儲存資料`）或直接使用 **純 SVG Icon 按鈕**（搭配 `title` 與 `aria-label` 無障礙屬性）；嚴禁把整句話塞進按鈕或表頭，並移除卡片標題下方重複標題語意的冗餘說明文字。
+      3. **既有 B2B 網站與高密度工作台 4 層次融合守則（克制原則矩陣）**：
+         - **層次 1（頂部導覽列、子分頁 `SegmentedTabs`、2～4 字操作按鈕）**：預設 `autoAnimated`（懸停/聚焦觸發），靜止時維持 `24×24` 乾淨線條。
+         - **層次 2（Bento 工序卡、模組入口卡、可點擊列表列 `StageshowRow`）**：外層容器加 `data-icon-trigger=""`，滑過整張卡片任意角落即可聯動圖示播放微動畫。
+         - **層次 3（按鈕文字/圖示切換、背景同步、儲存成功、異常警示徽章）**：包裹 `StatusStates`（鎖定寬度 0px 防抖動）或 `autoAnimated={false} play={isSyncing}` 由系統真實狀態驅動。
+         - **層次 4（高密度資料表百列台帳內部列、金額數字、法條/序號）**：**不放重複裝飾圖示**，或設 `animated={false}`，確保對帳與閱讀零干擾。
+    - `🧠 Agent A` 掛載 `[stageshow, impeccable, design-taste-frontend, frontend-design, agent-desktop]`（優先採 `stageshow` 原件幾何與動態連續性 + `impeccable` 的 `Operate` 高密度工作台與 `/distill` 去蕪存菁，拒絕裝飾性卡片與假數據）。
+    - `😈 Agent B` 掛載 `[stageshow, design-taste-frontend, web-design-guidelines, agency-testing-accessibility-auditor]`（專抓 UI 殘留 Emoji、超過 4 字的冗長按鈕、多餘解釋小字、手刻走樣小零件、硬切閃跳、中文字折行截斷 `truncate`、RWD 破版、缺 `<input type="date" lang="en" />`、無障礙缺失）。
+    - `⚖️ Agent C & 🛠️ Agent D` 掛載 `[stageshow, impeccable, design-taste-frontend, emil-design-eng, ponytail]`（落實零 Emoji + 適當 SVG 圖示 + 2～4 字極簡按鈕、`stageshow` 原件動態過渡、3D/Canvas 拖曳 `dragOffset` 1:1 跟手、原地更新不整頁重載、樂觀更新失敗回滾）。
     - `🔍 Agent E` 掛載 `[agent-desktop, webapp-testing, web-design-guidelines]`（執行 `@ref` 無障礙快照與真實瀏覽器 E2E 雙重驗證）。
   - **後端 API / DB 任務**：自動掛載 `[security-audit, agency-testing-api-tester, agency-engineering-database-optimizer]`（專抓 SQL Injection、N+1、跨庫契約破壞）。
-- **`⚖️ Agent C & 🛠️ Agent D` (`qwen-3.8-max`)**：基底 `[ponytail, decisions-governance]` ＋ 隨任務切換（如 `debug` 加掛 `fixer-prompt, tdd-workflow`；`data_analysis` 加掛 `xlsx, building-data-apps`；`ui_frontend` 加掛 `impeccable, emil-design-eng`）。
+- **`⚖️ Agent C & 🛠️ Agent D` (`qwen-max`)**：基底 `[ponytail, decisions-governance]` ＋ 隨任務切換（如 `debug` 加掛 `fixer-prompt, tdd-workflow`；`data_analysis` 加掛 `xlsx, building-data-apps`；`ui_frontend` 加掛 `stageshow, impeccable, design-taste-frontend, emil-design-eng`）。
 - 可隨時執行預覽指令驗證各角色的動態技能配發：`python scripts/multi_model_gate.py plan-skills --prompt "<任務描述>"`（或 `python ~/.gemini/scripts/multi_model_gate.py plan-skills --prompt "<任務描述>"`）。
 
 ## 百級技能確定性路由與漸進式載入協議 (Agent Skills Progressive Disclosure Protocol)

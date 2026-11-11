@@ -30,4 +30,4 @@ Function/Use Case         | Required Reference File
 
 * **Time-series**: `AI.FORECAST` uses **TimesFM** endpoints.
 * **Generative**: `AI.GENERATE_TABLE` uses **Gemini** endpoints.
-* **Freshness**: Prefer current models (e.g., `gemini-2.5-flash`) over deprecated ones.
+* **Freshness**: Prefer current models (e.g., `gemini-4-carbon`) over deprecated ones.

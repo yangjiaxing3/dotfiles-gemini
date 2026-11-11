@@ -99,7 +99,7 @@ Lists findings, changes no code.
 - **語言覆寫原則**：報告全文（含 `What this change does`、Must fix / Should fix / Nice to have 與 Verdict）一律使用**極簡直白的繁體中文**撰寫，每個發現附上可點擊的 `[檔名](file:///...)` 連結。
 - **🛑 全模型正交交叉確認（5 大模型家族協同）**：當審查提出 `Lean`（架構刪減/合併）建議，或發現 Implementer 刪減了既有邏輯時，必須結合：
   - `deepseek-flash` + TypeSafe `jev-1.13.0`（Spec Compliance 確認 0 規格遺漏）
-  - `gemini-4-argon`（`graphify` 圖譜依賴與 3D/UI 多模態完整性確認）
+  - `gemini-4-carbon`（`graphify` 圖譜依賴與 3D/UI 多模態完整性確認）
   - `grok-4.7` + `jev-1.13.0`（對抗式邊界與防過度簡化挑戰）
   - `qwen-3.8-max`（跨檔案重構結構安全性收斂）
   嚴禁單一模型自行決定刪減並直接改碼。

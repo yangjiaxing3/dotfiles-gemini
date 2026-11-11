@@ -28,19 +28,19 @@ alwaysApply: true
 
 ## 2. Ruflo Swarm V3 多代理模型分工矩陣 (2026 專業特化雙軌制)
 
-- **Phase 0 (`🛡️ Agent 0` 零區安全守門員)**：**`deepseek-flash`**（協同：`gemini-4-argon`）
-- **Phase 1 (`🧠 Agent A` 知識圖譜與架構發想)**：**`gemini-4-argon`**（協同：`deepseek-flash`）
-- **Phase 2 (`😈 Agent B` 魔鬼代言人紅隊批判)**：**`grok-4.7`**（協同：TypeSafe `jev-1.13.0` 雙模校準——當配置 `TYPESAFE_API_KEY` 或 `jev` MCP 時呼叫 TypeSafe JEV API；未配置時由 `scripts/multi_model_gate.py` 自動啟用正式授權之 `GPT Decision + local_rule_summary_v1` 校準替代方案）
-- **Phase 3 (`⚖️ Agent C` 意見整合與決策收斂)**：**`gemini-4-argon`** / **`qwen-3.8-max`**
+- **Phase 0 (`🛡️ Agent 0` 零區安全守門員)**：**`deepseek-flash`**（協同：`gemini-4-carbon`）
+- **Phase 1 (`🧠 Agent A` 知識圖譜與架構發想)**：**`gemini-4-carbon`**（協同：`deepseek-flash`）
+- **Phase 2 (`😈 Agent B` 魔鬼代言人紅隊批判)**：**`grok-4.7`**（協同：TypeSafe `jev-1.13.0` 量化風險校準）
+- **Phase 3 (`⚖️ Agent C` 意見整合與決策收斂)**：**`gemini-4-carbon`** / **`qwen-3.8-max`**
 - **Phase 4 (`🛠️ Agent D` 實作工蜂 & Fixer 除錯救援)**：日常快改 **`deepseek-flash`**；跨模組核心重構或**連續 2 次失敗觸發 Fixer** 強制升級 **`qwen-3.8-max`**
-- **Phase 5 (`🔍 Agent E` 驗屍官 & 終審 QA)**：**`deepseek-flash` + `grok-4.7`** + **`gemini-4-argon`**（視覺與多模態 E2E）
+- **Phase 5 (`🔍 Agent E` 驗屍官 & 終審 QA)**：**`deepseek-flash` + `grok-4.7`** + **`gemini-4-carbon`**（視覺與多模態 E2E）
 
 ## 3. 角色 × 任務 × 產業領域動態技能綁定 (Industry-Aware Role-Scoped Skill Matrix)
 
 `scripts/multi_model_gate.py` 會自動偵測當前專案所屬產業家族（`storeasy` vs `us3c`）與任務領域，為每個角色動態掛載精準技能：
 
 - **`🛡️ Agent 0` (`deepseek-flash`)**：基底 `[accidental-data-loss-prevention, stage-gate-review]` ＋ 任務技能（`debug`: `fixer-prompt, agent-tester`；`backend_api`: `security-audit, agency-testing-api-tester`）。
-- **`🧠 Agent A` (`gemini-4-argon`)**：基底 `[graphify, ponytail-audit]` ＋ 隨產業與任務切換：
+- **`🧠 Agent A` (`gemini-4-carbon`)**：基底 `[graphify, ponytail-audit]` ＋ 隨產業與任務切換：
   - **數據分析 (`data_analysis`)**：
     - Storeasy 家族：`[storeasy-mini-warehouse-viz, agency-data-consolidation-agent, d3-data-visualization]`
     - US3C 家族：`[us3c-tradein-margin-pricing, agency-data-consolidation-agent, d3-data-visualization]`

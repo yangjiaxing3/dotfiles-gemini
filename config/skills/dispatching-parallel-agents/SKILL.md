@@ -5,7 +5,7 @@ description: "Use when splitting independent tasks across parallel Manager-Worke
 
 # Dispatching Parallel Agents (Manager-Worker Pattern — Ruflo Swarm V3)
 
-This skill enables the Agent to act as a "Manager" (`gemini-4-argon`) that decomposes complex tasks into independent sub-tasks, and dispatches them to specialized "Worker Agents" via **Ruflo Swarm V3** for parallel execution.
+This skill enables the Agent to act as a "Manager" (`gemini-4-carbon`) that decomposes complex tasks into independent sub-tasks, and dispatches them to specialized "Worker Agents" via **Ruflo Swarm V3** for parallel execution.
 
 ## When to Use
 - **Complex Multi-Component Tasks**: When a user request involves multiple distinct modules (e.g., "Fix the FastAPI backend endpoint AND redesign the React dashboard tab").
@@ -14,7 +14,7 @@ This skill enables the Agent to act as a "Manager" (`gemini-4-argon`) that decom
 
 ## Workflow
 
-### 1. Analysis & Decomposition (The Manager — `gemini-4-argon`)
+### 1. Analysis & Decomposition (The Manager — `gemini-4-carbon`)
 - **Input**: User request + `graphify` dependency check.
 - **Action**: Verify zero file-write collisions and decompose into independent `Task` objects:
 
@@ -29,11 +29,11 @@ interface Task {
 
 ### 2. Intelligent Ruflo Swarm V3 Dispatching (The Workers)
 - `type: "frontend"` -> **UI/UX & React/TS Task**
-  - **Command**: `npx ruflo@latest agent spawn -t coder --model gemini-4-argon` (for visual UI/UX & multimodal layout) or `--model qwen-3.8-max` (for complex React/TypeScript state refactoring)
+  - **Command**: `npx ruflo@latest agent spawn -t coder --model gemini-4-carbon` (for visual UI/UX & multimodal layout) or `--model qwen-3.8-max` (for complex React/TypeScript state refactoring)
 - `type: "backend"` -> **Logic/CRUD & FastAPI/Turso Task**
   - **Command**: `npx ruflo@latest agent spawn -t coder --model DeepSeek-V4.1-Flash` (fast scoped logic) or `--model qwen-3.8-max` (cross-module schema & lifecycle refactoring)
 - `type: "data_analysis"` -> **Architecture, Graph & Deep Reasoning Task**
-  - **Command**: `npx ruflo@latest agent spawn -t analyst --model gemini-4-argon` (with `DeepSeek-V4.1-Flash` CoT & TypeSafe `jev-1.13.0` calibration)
+  - **Command**: `npx ruflo@latest agent spawn -t analyst --model gemini-4-carbon` (with `DeepSeek-V4.1-Flash` CoT & TypeSafe `jev-1.13.0` calibration)
 - `type: "testing"` -> **TDD & Adversarial Red-Team Review Task**
   - **Command**: `npx ruflo@latest agent spawn -t qa --model DeepSeek-V4.1-Flash` (for writing unit/integration tests) and `--model grok-4.7` (for adversarial edge-case & security auditing)
 
@@ -44,7 +44,7 @@ interface Task {
 ## Example Prompt for Manager Agent
 
 ```markdown
-You are the Manager Agent (`gemini-4-argon`). The user wants to: "Refactor the login API to return JWT and update the React login form to store it."
+You are the Manager Agent (`gemini-4-carbon`). The user wants to: "Refactor the login API to return JWT and update the React login form to store it."
 
 **Plan:**
 1. **Backend Task**: Modify `api/auth.py` to issue JWTs. (Type: backend)

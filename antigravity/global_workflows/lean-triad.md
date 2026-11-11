@@ -20,7 +20,7 @@ description: Lean-Triad 黃金三角工程工作流（AGENTS.md 確定性規範 
 | 角色代號與對外模型 | 角色常駐基底技能 | 隨任務領域動態切換之專屬技能（範例） |
 |---|---|---|
 | **`🛡️ Agent 0 & E-Spec` (`deepseek-flash`)** | `accidental-data-loss-prevention`, `stage-gate-review` | Debug: `fixer-prompt, agent-tester` \| 數據: `data-autocleaning, schema-mapping` \| 後端: `security-audit, agency-testing-api-tester` |
-| **`🧠 Agent A & E-Visual` (`gemini-4-argon`)** | `graphify`, `ponytail-audit` | 數據: `storeasy-mini-warehouse-viz, d3-data-visualization` \| UI: `impeccable, frontend-design, agent-desktop` \| SEO: `agency-marketing-data-seo-engineer, agency-marketing-geo-aeo-specialist` |
+| **`🧠 Agent A & E-Visual` (`gemini-4-carbon`)** | `graphify`, `ponytail-audit` | 數據: `storeasy-mini-warehouse-viz, d3-data-visualization` \| UI: `impeccable, frontend-design, agent-desktop` \| SEO: `agency-marketing-data-seo-engineer, agency-marketing-geo-aeo-specialist` |
 | **`😈 Agent B Red Team` (`grok-4.7`)** | `ponytail-review`, `agency-engineering-code-reviewer` | Debug: `fixer-prompt, agent-code-analyzer` \| 數據: `agency-support-analytics-reporter, ml-best-practices, xlsx` \| UI: `web-design-guidelines, agency-testing-accessibility-auditor` \| 後端: `security-audit, agency-engineering-database-optimizer` |
 | **`⚖️ Agent C & 🛠️ Agent D` (`qwen-3.8-max`)** | `ponytail`, `decisions-governance` | Debug: `fixer-prompt, tdd-workflow` \| 數據: `xlsx, building-data-apps` \| UI: `impeccable, emil-design-eng` \| 後端: `fastapi-templates` |
 | **`🎯 Agent Decision / JEV` (`jev-1.13` / `gpt-6.1-sol`)** | `ponytail-review`, `verification-quality` | 當環境配置 `TYPESAFE_API_KEY` 時呼叫 TypeSafe `jev-1.13` API；未配置時自動切換為授權之 `GPT Decision + local_rule_summary_v1` 校準替代方案 |

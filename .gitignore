@@ -50,6 +50,13 @@
 !config/skills/**/*.txt
 !config/skills/**/*.html
 !config/skills/**/*.css
+!config/skills/**/*.tsx
+!config/skills/**/*.jsx
+!config/skills/**/*.svg
+!config/skills/**/*.mdx
+!config/skills/**/*.sql
+!config/skills/**/*.toml
+!config/skills/**/*.jsonc
 
 # 強制排除 Skills 內可能存在的虛擬環境、套件依賴與快取目錄
 config/skills/**/.venv/

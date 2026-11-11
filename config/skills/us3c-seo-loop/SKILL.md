@@ -21,7 +21,7 @@ description: "Use when running the US3C 3D SEO flywheel combining GSC/GA4/Ads in
 
 ```mermaid
 flowchart TD
-    Step1["Stage 1: 📊 GSC 潛力詞挖掘 Agent<br/>(Model: gemini-4-argon)"] -->|曝光高但CTR低 排名4-20| Step2["Stage 2: 💰 Ads 高 ROI 詞彙萃取 Agent<br/>(Model: gemini-4-argon)"]
+    Step1["Stage 1: 📊 GSC 潛力詞挖掘 Agent<br/>(Model: gemini-4-carbon)"] -->|曝光高但CTR低 排名4-20| Step2["Stage 2: 💰 Ads 高 ROI 詞彙萃取 Agent<br/>(Model: gemini-4-carbon)"]
     Step2 -->|BigQuery 高轉化回收關鍵字| Step3["Stage 3: 🧠 搜尋意圖缺口架構師<br/>(Model: deepseek-flash)"]
     Step3 -->|CoT 推理出 P0/P1/P2 機型缺口| Step4["Stage 4: ✍️ Meta 台灣在地化文案專家<br/>(Model: qwen-3.8-max)"]
     Step4 -->|三型態動態語意合成 Title 25-32字 / Desc 70-85字| Step5["Stage 5: 🏗️ GEO 落地頁與 Schema 架構師<br/>(Model: qwen-3.8-max)"]

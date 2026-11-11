@@ -14,7 +14,7 @@
 | **2. Cursor 全域強制規則** | [`C:\Users\Jiaxing\.cursor\rules\skill-routing-and-swarm-v3.mdc`](file:///C:/Users/Jiaxing/.cursor/rules/skill-routing-and-swarm-v3.mdc)<br/>[`C:\Users\Jiaxing\.cursor\rules\gemini-source-of-truth.mdc`](file:///C:/Users/Jiaxing/.cursor/rules/gemini-source-of-truth.mdc) | **Cursor 全域 (`alwaysApply: true`)** | 強制 Cursor 同步遵循 `GEMINI.md`、掛載 `C:\Users\Jiaxing\.gemini\config\skills\` 與專案 `.agents/skills/`、使用 `Shell` 呼叫 `skill_router.py` 及遵循 Swarm V3 模型分工。 |
 | **3. 全域確定性技能路由器** | [`C:\Users\Jiaxing\.gemini\scripts\skill_router.py`](file:///C:/Users/Jiaxing/.gemini/scripts/skill_router.py)<br/>[`C:\Users\Jiaxing\.gemini\scripts\skill_eval_dataset.json`](file:///C:/Users/Jiaxing/.gemini/scripts/skill_eval_dataset.json) | **全域跨專案 CLI 工具** | 支援在任何 Git Repo 下執行 `python C:\Users\Jiaxing\.gemini\scripts\skill_router.py route "<prompt>"`，10ms 內結合 BM25 與雙語詞典從 136+ 個技能中篩出 Top-5。 |
 | **4. 全域與專案 Skills 庫 (單一 `.agents/` 收斂)** | 全域：[`C:\Users\Jiaxing\.gemini\config\skills\*\SKILL.md`](file:///C:/Users/Jiaxing/.gemini/config/skills)<br/>專案唯一標準目錄：[`.agents/skills/*/SKILL.md`](file:///c:/Users/Jiaxing/Documents/GitHub/Storeasyworkdivnew/.agents/skills)（舊版冗餘 `.agent/` 已無損合併並移除） | **全域 119 個 + 專案 59 個 (去重後 136 個 Active Skills)** | 全數完成 Description `<= 140` 字元濃縮、`Use when` 觸發條件補齊、超長 Body 拆至 `references/detailed-guide.md`、植入 `## ⚠️ Gotchas`。 |
-| **5. 全域與專案多代理工作流 (6 大工作流家族 100% 升級)** | 全域：[`C:\Users\Jiaxing\.gemini\antigravity\global_workflows\`](file:///C:/Users/Jiaxing/.gemini/antigravity/global_workflows)<br/>專案：[`.agents/workflows/`](file:///c:/Users/Jiaxing/Documents/GitHub/Storeasyworkdivnew/.agents/workflows) & [`.agent/workflows/`](file:///c:/Users/Jiaxing/Documents/GitHub/Storeasyworkdivnew/.agent/workflows)<br/>涵蓋：[`multi-agent-mode.md`](file:///c:/Users/Jiaxing/Documents/GitHub/Storeasyworkdivnew/.agents/workflows/multi-agent-mode.md)、[`skillorchestrator.md`](file:///c:/Users/Jiaxing/Documents/GitHub/Storeasyworkdivnew/.agents/workflows/skillorchestrator.md)、[`subagent-driven-development.md`](file:///c:/Users/Jiaxing/Documents/GitHub/Storeasyworkdivnew/.agents/workflows/subagent-driven-development.md)、[`dispatching-parallel-agents.md`](file:///c:/Users/Jiaxing/Documents/GitHub/Storeasyworkdivnew/.agents/workflows/dispatching-parallel-agents.md)、[`agentic-rag.md`](file:///c:/Users/Jiaxing/Documents/GitHub/Storeasyworkdivnew/.agents/workflows/agentic-rag.md)、[`us3c-seo-loop`](file:///C:/Users/Jiaxing/.gemini/config/skills/us3c-seo-loop/SKILL.md) | **全域 + 專案 Workflows & Skills** | 全面淘汰舊世代 `deepseek-coder` / `gpt-4o-mini` / `claude-3-5-sonnet` / `deepseek-v4-flash`，100% 升級為 2026 四大新世代模型：**`gemini-4-argon`**、**`grok-4.7`**、**`qwen-3.8-max`**、**`DeepSeek-V4.1-Flash`**（搭配線上 TypeSafe **`jev-1.13.0`**）。 |
+| **5. 全域與專案多代理工作流 (6 大工作流家族 100% 升級)** | 全域：[`C:\Users\Jiaxing\.gemini\antigravity\global_workflows\`](file:///C:/Users/Jiaxing/.gemini/antigravity/global_workflows)<br/>專案：[`.agents/workflows/`](file:///c:/Users/Jiaxing/Documents/GitHub/Storeasyworkdivnew/.agents/workflows) & [`.agent/workflows/`](file:///c:/Users/Jiaxing/Documents/GitHub/Storeasyworkdivnew/.agent/workflows)<br/>涵蓋：[`multi-agent-mode.md`](file:///c:/Users/Jiaxing/Documents/GitHub/Storeasyworkdivnew/.agents/workflows/multi-agent-mode.md)、[`skillorchestrator.md`](file:///c:/Users/Jiaxing/Documents/GitHub/Storeasyworkdivnew/.agents/workflows/skillorchestrator.md)、[`subagent-driven-development.md`](file:///c:/Users/Jiaxing/Documents/GitHub/Storeasyworkdivnew/.agents/workflows/subagent-driven-development.md)、[`dispatching-parallel-agents.md`](file:///c:/Users/Jiaxing/Documents/GitHub/Storeasyworkdivnew/.agents/workflows/dispatching-parallel-agents.md)、[`agentic-rag.md`](file:///c:/Users/Jiaxing/Documents/GitHub/Storeasyworkdivnew/.agents/workflows/agentic-rag.md)、[`us3c-seo-loop`](file:///C:/Users/Jiaxing/.gemini/config/skills/us3c-seo-loop/SKILL.md) | **全域 + 專案 Workflows & Skills** | 全面淘汰舊世代 `deepseek-coder` / `gpt-4o-mini` / `claude-3-5-sonnet` / `deepseek-v4-flash`，100% 升級為 2026 四大新世代模型：**`gemini-4-carbon`**、**`grok-4.7`**、**`qwen-3.8-max`**、**`DeepSeek-V4.1-Flash`**（搭配線上 TypeSafe **`jev-1.13.0`**）。 |
 
 ### Cursor vs. Antigravity 雙向操作對照
 
@@ -57,14 +57,14 @@
 
 ```mermaid
 flowchart LR
-    P0["🛡️ Phase 0: 守門員<br/>DeepSeek-V4.1-Flash<br/>+ gemini-4-argon"] --> P1["🧠 Phase 1: 架構發想<br/>gemini-4-argon<br/>+ DeepSeek-V4.1-Flash"]
+    P0["🛡️ Phase 0: 守門員<br/>DeepSeek-V4.1-Flash<br/>+ gemini-4-carbon"] --> P1["🧠 Phase 1: 架構發想<br/>gemini-4-carbon<br/>+ DeepSeek-V4.1-Flash"]
     P1 --> P2["😈 Phase 2: 紅隊批判<br/>grok-4.7<br/>+ TypeSafe jev-1.13.0"]
-    P2 --> P3["⚖️ Phase 3: 整合決策<br/>gemini-4-argon<br/>/ qwen-3.8-max"]
+    P2 --> P3["⚖️ Phase 3: 整合決策<br/>gemini-4-carbon<br/>/ qwen-3.8-max"]
     P3 --> P4["🛠️ Phase 4: 雙軌實作 & Fixer<br/>快改: DeepSeek-V4.1-Flash<br/>重構/Fixer: qwen-3.8-max"]
-    P4 --> P5["🔍 Phase 5: 驗屍官 & 終審<br/>DeepSeek-V4.1-Flash + grok-4.7<br/>+ gemini-4-argon"]
+    P4 --> P5["🔍 Phase 5: 驗屍官 & 終審<br/>DeepSeek-V4.1-Flash + grok-4.7<br/>+ gemini-4-carbon"]
 ```
 
-- **後端設定與自動備援**：[`backend/app/core/config.py`](file:///c:/Users/Jiaxing/Documents/GitHub/Storeasyworkdivnew/backend/app/core/config.py) 與 [`backend/app/services/ai_service.py`](file:///c:/Users/Jiaxing/Documents/GitHub/Storeasyworkdivnew/backend/app/services/ai_service.py) 已設定主模型 `GEMINI_MODEL="gemini-4-argon"`，並透過 `_generate_with_fallback()` 自動在線上 API 未就緒時無縫降級至 `GEMINI_FALLBACK_MODEL="gemini-3.8-flash"`。
+- **後端設定與自動備援**：[`backend/app/core/config.py`](file:///c:/Users/Jiaxing/Documents/GitHub/Storeasyworkdivnew/backend/app/core/config.py) 與 [`backend/app/services/ai_service.py`](file:///c:/Users/Jiaxing/Documents/GitHub/Storeasyworkdivnew/backend/app/services/ai_service.py) 已設定主模型 `GEMINI_MODEL="gemini-4-carbon"`，並透過 `_generate_with_fallback()` 自動在線上 API 未就緒時無縫降級至 `GEMINI_FALLBACK_MODEL="gemini-3.8-flash"`。
 
 ---
 
@@ -86,4 +86,4 @@ flowchart LR
 > **Prompt for Grok 4.7**：
 > 「請以 Ruflo Swarm V3 中 `😈 Agent B (grok-4.7 魔鬼代言人)` 的第一性原理視角，審查這份全域架構升級報告：
 > 1. 檢查我們將 195 個 `SKILL.md` 拆分為三層漸進式架構（`Metadata <= 140 chars`、`Body < 250 lines`、`references/detailed-guide.md` 按需載入）與 `skill_router.py` (BM25 + 雙語同義詞 Top-5 初篩)，在 Antigravity 與 Cursor 雙客戶端並行時是否還有潛在的邊界漏洞？
-> 2. 檢查 Ruflo Swarm V3 的 6 階段正交模型分工（`gemini-4-argon` 發想、`grok-4.7` 紅隊、`qwen-3.8-max` 重構/Fixer、`DeepSeek-V4.1-Flash` 快改/驗屍、TypeSafe `jev-1.13.0` 量化校準）是否還有可進一步壓榨算力或降低延遲的空間？」
+> 2. 檢查 Ruflo Swarm V3 的 6 階段正交模型分工（`gemini-4-carbon` 發想、`grok-4.7` 紅隊、`qwen-3.8-max` 重構/Fixer、`DeepSeek-V4.1-Flash` 快改/驗屍、TypeSafe `jev-1.13.0` 量化校準）是否還有可進一步壓榨算力或降低延遲的空間？」

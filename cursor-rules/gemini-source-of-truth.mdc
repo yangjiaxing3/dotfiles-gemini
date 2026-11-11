@@ -5,6 +5,7 @@ alwaysApply: true
 
 # 單一真相來源 (Cloud & Local Single Source of Truth)
 
-- 在 **`DESKTOP-N1NJDUH`、`YangPC` 與 Cursor Cloud Agents（雲端 Linux 容器）** 環境下，皆以專案內 `.cursor/rules/*.mdc`、`AGENTS.md`、`.cursor/skills/`、`.agents/skills/` 與 `scripts/skill_router.py` 為跨機單一真相來源（本機與 `~/.gemini/GEMINI.md` 透過 `sync_skills_to_cloud_repos.py` 雙向同步，不綁定單一電腦使用者路徑）。
+- **三點同源自動鎖定**：本機 `~/.gemini/GEMINI.md`、`.cursor/rules/engineering-core.mdc` 與專案根目錄 `AGENTS.md`（受管區塊 `<!-- BEGIN_LEAN_TRIAD_SSOT --> ... <!-- END_LEAN_TRIAD_SSOT -->`）透過 `scripts/sync_skills_to_cloud_repos.py` 與雲端啟動腳本 `scripts/bootstrap_cursor_cloud.py` 自動編譯同步，**嚴禁手改單一檔案造成規則或回條模板分裂**。
+- 在 **`DESKTOP-N1NJDUH`、`YangPC` 與 Cursor Cloud Agents（雲端 Linux 容器）** 環境下，由於雲端系統提示預設只注入根目錄 `AGENTS.md`，因此根目錄 `AGENTS.md` 內嵌與 `engineering-core.mdc` 完全相同的受管區塊；雲端容器啟動時亦由 `bootstrap_cursor_cloud.py` 自動在容器內建立 `~/.gemini/GEMINI.md` 鏡像。
 - 呼叫技能路由與多模型門禁時，優先執行專案內 `python scripts/skill_router.py` 與 `python scripts/multi_model_gate.py`（若專案無 `scripts/` 則回退至 `~/.gemini/scripts/`）。
 - 終端機工具在 Cursor 使用 `Shell`，在 Gemini CLI / Antigravity 使用 `run_command`，核心 Lean-Triad 工程規範完全一致。

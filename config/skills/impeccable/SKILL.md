@@ -68,7 +68,8 @@ Produce ready-to-ship, production-grade code, not prototypes or starting points.
 - **No em dashes.** Use commas, colons, semicolons, periods, or parentheses. Also not `--`.
 - **No aphoristic-cadence body copy as a default voice.** Don't fall into the rhythm of "serious statement, then punchy short negation" as the page's recurring voice. If three or more section copy blocks on the page land on a short rebuttal-shaped sentence, rewrite. Specific, not aphoristic.
 - **No marketing buzzwords.** The streamline / empower / supercharge / leverage / unleash / transform / seamless / world-class / enterprise-grade / next-generation / cutting-edge / game-changer / mission-critical family of phrases. Pick a specific noun and a verb that describes what the product literally does.
-- Button labels: verb + object. "Save changes" beats "OK"; "Delete project" beats "Yes". The label should say what will happen.
+- Button labels: **2-4 Chinese characters (動賓短語, e.g., `新增批次`, `產生明細`, `匯出 Excel`, `顯示月薪`) or a pure SVG icon button** (with `title` and `aria-label`). Never stuff full sentences or explanatory clauses into buttons.
+- **Strip redundant helper subtitles.** Do not place explanatory paragraphs under section headers that merely repeat what the title or table columns already show.
 - Link text needs standalone meaning. "View pricing plans" beats "Click here"; screen readers announce links out of context.
 
 ### New projects only (when no prior work exists)
@@ -97,6 +98,8 @@ Match-and-refuse. If you're about to write any of these, rewrite the element wit
 - **Tiny uppercase tracked eyebrow above every section.** The 2023-era kicker (small all-caps text with wide tracking, "ABOUT" "PROCESS" "PRICING" above each heading) is now the saturated AI scaffold; it appears on 55-95% of generations regardless of brief, which is the definition of a tell. One named kicker as a deliberate brand system is voice; an eyebrow on every section is AI grammar. Choose a different cadence.
 - **Numbered section markers as default scaffolding (01 / 02 / 03).** Putting `01 · About / 02 · Process / 03 · Pricing` above every section is the eyebrow trope one tier deeper: reach for it because "landing pages do this" and you're scaffolding by reflex. Numbers earn their place when the section actually IS a sequence (a real 3-step process, an ordered flow, a typed timeline) and the order carries information the reader needs. One deliberate numbered sequence on one page is voice; numbered eyebrows on every section across the site is AI grammar.
 - **Text that overflows its container.** Long heading words plus large clamp scales plus narrow grids cause headline overflow on tablet/mobile. Test the heading copy at every breakpoint; if it overflows, reduce the clamp max or rewrite the copy. The viewport is part of the design.
+- **Emojis in UI surfaces.** Never place emojis in headings, KPI cards, badges, buttons, table cells, empty states, or helper text. Use clean inline SVGs or `lucide-react` vector icons (`14px-16px`, `strokeWidth={1.75-2}`) when visual cues are needed.
+- **Verbose button copy (> 4 Chinese chars) and redundant subtitles.** Never write full-sentence buttons or repeat the section title in a gray subtitle paragraph below it. Use 2-4 character labels (`新增批次`, `匯出 Excel`, `顯示月薪`) or pure SVG icon buttons with `title` / `aria-label`.
 
 ### The AI slop test
 
@@ -174,4 +177,11 @@ Valid `<command>` is any command from the table above. Report the script's resul
 
 ## ⚠️ Gotchas (避坑指南)
 - **禁止廉價 AI 模板感 (Anti-Slop)**：避免過度使用無意義的紫藍漸層、千篇一律的三欄卡片與脫離業務語境的假數字。
+- **嚴禁 UI Emoji，優先使用 `PulsoIcon` (`pulsoicon-react`) 動態 SVG 圖示**：介面標題、KPI 卡、徽章、按鈕、表格與提示文字一律禁止使用任何 Emoji；需要視覺引導時，優先採用 `pulsoicon-react`（https://github.com/CityPulso/PulsoIcon.git，與 `lucide-react` 一行替換，懸停時播放專屬微動畫，卡片加 `data-icon-trigger` 即可整卡觸發）或乾淨 SVG（`w-3.5 h-3.5` 或 `w-4 h-4`）。
+- **按鈕極簡化（2～4 字或純 Icon）與去冗餘說明**：所有操作按鈕強制精簡為 **2～4 個字**（動賓結構，如 `新增批次`、`產生明細`、`匯出 Excel`、`顯示月薪`）或直接使用 **純 SVG Icon 按鈕**（搭配 `title` 與 `aria-label`）；嚴禁把整句話塞進按鈕，並移除標題下方重複語意的冗餘說明文字。
 - **日期與表單無障礙**：所有 `<input type="date" lang="en" />` 強制加註 `lang="en"`；互動按鈕需具備明確 `title` 或 `aria-label` 與鍵盤焦點狀態。
+- **既有 B2B 網站與高密度工作台 4 層次融合守則（克制原則矩陣）**：
+  1. **導覽列、子分頁 (`SegmentedTabs`)、2～4 字操作按鈕**：預設 `autoAnimated`（懸停/聚焦觸發），靜止時維持 `24×24` 乾淨線條。
+  2. **Bento 工序卡、模組入口卡、可點擊列表列 (`StageshowRow`)**：外層容器加 `data-icon-trigger=""`，滑過整張卡片任意角落即可聯動圖示播放微動畫。
+  3. **按鈕文字/圖示切換、背景同步、儲存成功、異常警示徽章**：包裹 `StatusStates`（鎖定寬度 0px 防抖動）或 `autoAnimated={false} play={isSyncing}` 由系統真實狀態驅動。
+  4. **高密度資料表（百列台帳）內部列、金額數字、法條/序號**：**不放重複裝飾圖示**，或設 `animated={false}`，確保對帳與閱讀零干擾。

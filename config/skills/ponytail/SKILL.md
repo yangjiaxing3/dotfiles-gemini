@@ -49,11 +49,11 @@ Never cut: validation at trust boundaries, error handling that prevents data los
 - **🛑 嚴禁單一 Agent 自作主張簡化架構（強制 Ruflo Swarm V3 全模型會審門禁）**：
   - 凡涉及**架構簡化、移除抽象層/Wrapper、合併模組、刪除檔案或單次刪減 > 15 行既有邏輯**，**絕對禁止**單一模型自作主張直接刪改！
   - 必須強制調動 **Ruflo Swarm V3 全部 5 大異質模型家族** 交叉確認：
-    1. `🛡️ Agent 0` (`deepseek-flash` + `gemini-4-argon`)：工作區與跨 repo 邊界檢查。
-    2. `🧠 Agent A` (`gemini-4-argon` + `deepseek-flash`)：查 `graphify` 全庫與跨專案呼叫鏈提出擬簡化清單。
+    1. `🛡️ Agent 0` (`deepseek-flash` + `gemini-4-carbon`)：工作區與跨 repo 邊界檢查。
+    2. `🧠 Agent A` (`gemini-4-carbon` + `deepseek-flash`)：查 `graphify` 全庫與跨專案呼叫鏈提出擬簡化清單。
     3. `😈 Agent B` (`grok-4.7` + TypeSafe `jev-1.13.0`)：對抗式紅隊結合 JEV 量化校準，挑戰是否誤傷核心演算法或邊界容錯。
-    4. `⚖️ Agent C` (`gemini-4-argon` + `qwen-3.8-max`)：收斂正反意見並向使用者提請核准。
-    5. `🛠️ Agent D` (`deepseek-flash` 快改 / `qwen-3.8-max` 重構與 Fixer) + `🔍 Agent E` (`deepseek-flash` + `jev-1.13.0` 規格防漏砍審查 + `grok-4.7` 品質終審 + `gemini-4-argon` 視覺 E2E)。
+    4. `⚖️ Agent C` (`gemini-4-carbon` + `qwen-3.8-max`)：收斂正反意見並向使用者提請核准。
+    5. `🛠️ Agent D` (`deepseek-flash` 快改 / `qwen-3.8-max` 重構與 Fixer) + `🔍 Agent E` (`deepseek-flash` + `jev-1.13.0` 規格防漏砍審查 + `grok-4.7` 品質終審 + `gemini-4-carbon` 視覺 E2E)。
 - **🛑 核心演算法禁區（砍架構贅肉，絕不砍數學與業務精度）**：
   - **嚴禁簡化或改用近似值**：3D 模擬器物品擺放計算 (Bin Packing / Placement)、AABB/OBB 碰撞偵測、矩陣旋轉、DXF 幾何多邊形解析、財務租金/材積核算公式、IoT/攝影機 FOV 校準參數、以及跨系統 API 契約。
 - **標記已知妥協**：若採用有容量或場景上限的捷徑，必須加上單行註解 `// shortcut: <上限條件>, <何時該升級>`。

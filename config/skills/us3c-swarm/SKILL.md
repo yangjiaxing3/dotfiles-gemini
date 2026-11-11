@@ -7,7 +7,7 @@ description: "'US3C Ruflo Swarm 技能掛載與冷熱庫協作。Use when the us
 
 本工作流引導並調度位於 `C:\Users\Jiaxing\.gemini\antigravity-ide\skills` 的 28 個 Active Skills (Hot Library)，在 US3C Next.js 重構專案中執行多 Agent 重複檢測、網頁 Premium 設計系統一致性校驗、以及二手 3C 深度價值分析內容自動化寫作發布流水線。
 
-需要換模型時只准 Ruflo Swarm V3 五家，通道與停損條件以 `multi-agent-mode` 為準：`deepseek-flash`（`DEEPSEEK_API_KEY`）、`qwen-3.8-max`（`QWEN_API_KEY`，北京 QwenCloud，model `qwen3.8-max`）、`gemini-4-argon`（`GEMINI_API_KEY`，`models/gemini-4-argon`）、`grok-4.7`（Cursor 方案裡的 Grok，不要讀 `XAI_API_KEY`）、TypeSafe `jev-1.13.0`（變數名 `TYPESAFE_API_KEY`，評分器，不當聊天模型）。下面的橋接腳本負責工作流，不另外指定第六個模型。
+需要換模型時只准 Ruflo Swarm V3 五家，通道與停損條件以 `multi-agent-mode` 為準：`deepseek-flash`（`DEEPSEEK_API_KEY`）、`qwen-3.8-max`（`QWEN_API_KEY`，北京 QwenCloud，model `qwen3.8-max`）、`gemini-4-carbon`（`GEMINI_API_KEY`，`models/gemini-4-carbon`）、`grok-4.7`（Cursor 方案裡的 Grok，不要讀 `XAI_API_KEY`）、TypeSafe `jev-1.13.0`（變數名 `TYPESAFE_API_KEY`，評分器，不當聊天模型）。下面的橋接腳本負責工作流，不另外指定第六個模型。
 
 ---
 

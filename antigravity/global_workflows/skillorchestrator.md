@@ -35,11 +35,11 @@ description: iMCheck 多代理 Swarm 技能協調器 (iMSSO) — 針對全系列
 
 ```mermaid
 graph TD
-    User([使用者指令]) --> Manager[Manager / Queen Agent: gemini-4-argon]
+    User([使用者指令]) --> Manager[Manager / Queen Agent: gemini-4-carbon]
     Manager -->|1. 確定性路由 skill_router.py| Router{Skill Router}
     Manager -->|2. 初始化 Swarm| SwarmInit[swarm_init]
     
-    SwarmInit -->|3. 並行 Spawn Workers| Worker1[Agency-SEO-Specialist: gemini-4-argon]
+    SwarmInit -->|3. 並行 Spawn Workers| Worker1[Agency-SEO-Specialist: gemini-4-carbon]
     SwarmInit -->|3. 並行 Spawn Workers| Worker2[Agency-Copywriter: qwen-3.8-max]
     SwarmInit -->|3. 並行 Spawn Workers| Worker3[Agency-Technical-Architect: DeepSeek-V4.1-Flash]
     SwarmInit -->|3. 並行 Spawn Workers| Worker4[Agency-RedTeam-Auditor: grok-4.7]
@@ -59,8 +59,8 @@ npx ruflo@latest swarm init --topology hierarchical-mesh --max-agents 6 --strate
 
 ### 步驟 2：派發專業領域 Worker (Spawn Agents — Ruflo Swarm V3 模型矩陣)
 ```bash
-# 啟動 SEO 策略專家 (掛載競品與關鍵字技能 — 採用百萬 Context 多模態旗艦 gemini-4-argon)
-npx ruflo@latest agent spawn -t analyst --name Agency-SEO-Specialist --model gemini-4-argon -p "目標：分析 [機型/平台] 的二手回收市場缺口並提取長尾詞。"
+# 啟動 SEO 策略專家 (掛載競品與關鍵字技能 — 採用百萬 Context 多模態旗艦 gemini-4-carbon)
+npx ruflo@latest agent spawn -t analyst --name Agency-SEO-Specialist --model gemini-4-carbon -p "目標：分析 [機型/平台] 的二手回收市場缺口並提取長尾詞。"
 
 # 啟動 EEAT 文案創作師 (掛載文案與審計技能 — 採用繁體中文與結構化王者 qwen-3.8-max)
 npx ruflo@latest agent spawn -t coder --name Agency-Copywriter --model qwen-3.8-max -p "目標：依據 SEO 詞庫，撰寫台灣共情文案，並執行 EEAT 品質審查。"

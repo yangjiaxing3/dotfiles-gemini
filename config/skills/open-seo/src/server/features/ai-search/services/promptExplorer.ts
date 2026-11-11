@@ -30,7 +30,7 @@ const PROMPT_RESPONSE_TTL_SECONDS = 7 * 24 * 60 * 60;
 
 /**
  * Hard cap on response length. Set to the DataForSEO per-call maximum because
- * reasoning models (gpt-5, gemini-4-argon) count hidden chain-of-thought
+ * reasoning models (gpt-5, gemini-4-carbon) count hidden chain-of-thought
  * tokens against this budget — at 1024 ChatGPT regularly burns the whole
  * budget on reasoning and returns a near-empty visible message.
  */
@@ -127,7 +127,7 @@ async function runModel(
 const MODEL_NAMES: Record<PromptExplorerModel, string> = {
   chat_gpt: "gpt-5",
   claude: "claude-sonnet-4-0",
-  gemini: "gemini-4-argon",
+  gemini: "gemini-4-carbon",
   perplexity: "sonar-reasoning-pro",
 };
 

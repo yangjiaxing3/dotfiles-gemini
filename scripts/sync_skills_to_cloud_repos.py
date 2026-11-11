@@ -257,7 +257,111 @@ def has_git_symlink_architecture(repo: Path) -> bool:
         return False
 
 
-def sync_repo(repo: Path, global_skills: list[Path]) -> dict:
+SSOT_BEGIN = "<!-- BEGIN_LEAN_TRIAD_SSOT -->"
+SSOT_END = "<!-- END_LEAN_TRIAD_SSOT -->"
+
+CANONICAL_AGENTS_SSOT_BLOCK = """<!-- BEGIN_LEAN_TRIAD_SSOT -->
+## Cursor Cloud & Agent Skills (Lean-Triad 單一真相來源)
+
+> 本區塊由 `scripts/sync_skills_to_cloud_repos.py` 與 `scripts/bootstrap_cursor_cloud.py` 自 `~/.gemini/GEMINI.md` 及 `.cursor/rules/engineering-core.mdc` 自動同步鎖定；請勿單獨手改，避免本機與雲端規則分裂。
+
+- **常駐底層引擎**：`🧭 Graphify 圖譜導航` + `🧰 Role-Scoped Skills 動態掛載` + `✂️ Ponytail 極簡守則` 為常駐引擎；刪減 `> 15` 行、移除抽象層／檔案或指定 `/multi-agent-mode` 時強制執行 `python3 scripts/multi_model_gate.py review --prompt "..." --git-diff --output temp_multi_review.json`。
+- **確定性路由與多模型門禁**：
+  - 檢索最佳技能：`python3 scripts/skill_router.py route "<任務描述>"`
+  - 預覽角色×任務技能矩陣：`python3 scripts/multi_model_gate.py plan-skills --prompt "<任務描述>"`
+- **全域 UI 圖示與極簡按鈕鐵律（`impeccable` × `stageshow` × `design-taste-frontend`）**：
+  - **嚴禁 UI Emoji**：頁面標題、KPI、徽章、按鈕、表格與提示文字一律禁止使用 Emoji；視覺引導統一使用乾淨 SVG 或 `lucide-react` 圖示。
+  - **按鈕限 2～4 字或純 Icon**：操作按鈕強制精簡為 **2～4 個字**（如 `新增批次`、`匯出 Excel`、`顯示月薪`）或純 SVG Icon 按鈕（必備 `title` 與 `aria-label`），並移除重複標題語意的冗餘說明文字。
+- **收尾誠實揭露與極簡防重複回條（Final-Turn Compact Lean-Triad Receipt）**：
+  - **🚫 嚴禁輸出回條之場景（防 Token 浪費）**：等待背景任務（`run_command` / `Shell` / subagent）完成的中繼進度回覆、純合併／部署狀態回報、澄清提問、純問答或閒聊，或**同一任務無新程式碼變更時，絕對禁止附上執行回條**。
+  - **🚫 嚴禁正文與回條內容重複（Anti-Duplication Rule）**：回條每欄僅限填寫**關鍵字、路徑、行數或指令結果**（每欄 `<= 60` 字），**嚴禁把正文寫過的結論、PR 編號或背景敘述重抄進回條**；反之，已寫入回條的測試通過數、行數統計與略過邊界，正文**不再重複條列**。
+  - **✅ 最終交付格式**（僅在「任務最終完成交付」結尾輸出一次精簡逐行版回條）：
+    ```markdown
+    ---
+    **🛡️ Lean-Triad**
+    - 🧰 **Skills**：`<Skills>`
+    - 🧭 **Graphify**：`<節點 / update>`
+    - ✂️ **Ponytail**：`+<新增> / -<刪除> 行 (shortcut: <無或註記>)`
+    - ⚖️ **Gate & QA**：`<會審門禁與測試通過數>`
+    - ⚠️ **邊界**：`<略過項目與風險>`
+    ```
+<!-- END_LEAN_TRIAD_SSOT -->"""
+
+
+def sync_ssot_rules_from_gemini_md() -> bool:
+    """
+    確保本機單一真相來源 ~/.gemini/GEMINI.md、~/.gemini/cursor-rules/engineering-core.mdc 與
+    ~/.cursor/rules/engineering-core.mdc 的回條與防重複規範完全一致，消除覆蓋回退。
+    """
+    gemini_rules_dir = HOME / ".gemini" / "cursor-rules"
+    gemini_rules_dir.mkdir(parents=True, exist_ok=True)
+    GLOBAL_CURSOR_RULES_DIR.mkdir(parents=True, exist_ok=True)
+
+    src_mdc = gemini_rules_dir / "engineering-core.mdc"
+    dst_mdc = GLOBAL_CURSOR_RULES_DIR / "engineering-core.mdc"
+
+    if dst_mdc.is_file() and (not src_mdc.is_file() or "Anti-Duplication Rule" not in src_mdc.read_text(encoding="utf-8")):
+        if "Anti-Duplication Rule" in dst_mdc.read_text(encoding="utf-8"):
+            shutil.copy2(dst_mdc, src_mdc)
+
+    for mdc in gemini_rules_dir.glob("*.mdc"):
+        shutil.copy2(mdc, GLOBAL_CURSOR_RULES_DIR / mdc.name)
+    return True
+
+
+def ensure_agents_md_ssot(repo: Path) -> bool:
+    """
+    將 Lean-Triad 單一真相來源區塊自動注入專案根目錄 AGENTS.md（Cursor Cloud Agents 唯一必讀系統提示檔）。
+    若原本已有舊版 `## Lean-Triad 執行回條` 或 `## Cursor Cloud & Agent Skills (Lean-Triad)` 則原位替換為受管區塊。
+    """
+    agents_md = repo / "AGENTS.md"
+    if not agents_md.is_file():
+        agents_md.write_text(f"# AGENTS.md — {repo.name}\n\n{CANONICAL_AGENTS_SSOT_BLOCK}\n", encoding="utf-8")
+        return True
+
+    original = agents_md.read_text(encoding="utf-8")
+    updated = original
+
+    if SSOT_BEGIN in updated and SSOT_END in updated:
+        pattern = re.compile(
+            re.escape(SSOT_BEGIN) + r".*?" + re.escape(SSOT_END),
+            re.DOTALL,
+        )
+        updated = pattern.sub(CANONICAL_AGENTS_SSOT_BLOCK, updated)
+    else:
+        legacy_patterns = [
+            re.compile(
+                r"## Cursor Cloud & Agent Skills \(Lean-Triad[^\n]*\)\n.*?(?=\n## |\Z)",
+                re.DOTALL,
+            ),
+            re.compile(
+                r"## Lean-Triad 執行回條[^\n]*\n.*?(?=\n## |\Z)",
+                re.DOTALL,
+            ),
+        ]
+        replaced = False
+        for lp in legacy_patterns:
+            if lp.search(updated):
+                updated = lp.sub(CANONICAL_AGENTS_SSOT_BLOCK + "\n", updated, count=1)
+                replaced = True
+                break
+        if not replaced:
+            if "\n## graphify" in updated:
+                updated = updated.replace(
+                    "\n## graphify",
+                    f"\n{CANONICAL_AGENTS_SSOT_BLOCK}\n\n## graphify",
+                    1,
+                )
+            else:
+                updated = updated.rstrip() + f"\n\n{CANONICAL_AGENTS_SSOT_BLOCK}\n"
+
+    if updated != original:
+        agents_md.write_text(updated, encoding="utf-8")
+        return True
+    return False
+
+
+def sync_repo(repo: Path, global_skills: list[Path], rules_only: bool = False) -> dict:
     family = get_repo_family(repo.name)
     excluded_skills = STOREASY_ONLY_SKILLS if family == "us3c" else US3C_ONLY_SKILLS
     excluded_rules = STOREASY_ONLY_RULES if family == "us3c" else US3C_ONLY_RULES
@@ -300,10 +404,26 @@ def sync_repo(repo: Path, global_skills: list[Path]) -> dict:
     ):
         src_f = GLOBAL_SCRIPTS_DIR / fname
         if src_f.is_file():
-            shutil.copy2(src_f, scripts_dst / fname)
+            try:
+                if os.path.realpath(src_f) != os.path.realpath(scripts_dst / fname):
+                    shutil.copy2(src_f, scripts_dst / fname)
+            except OSError:
+                pass
+
+    # 1b. 自動同步專案根目錄 AGENTS.md 的受管單一真相來源區塊 (SSOT)
+    agents_md_updated = ensure_agents_md_ssot(repo)
 
     # 3. 同步 .cursor/environment.json
     ensure_cursor_environment_json(repo)
+
+    if rules_only:
+        return {
+            "repo": repo.name,
+            "family": family,
+            "rules_synced": rules_synced,
+            "agents_md_ssot_updated": agents_md_updated,
+            "mode": "rules_only",
+        }
 
     # 4. 依產業家族過濾並同步專屬 Skills（若為 120000 Git symlink 架構則只寫入單一真相源 .agent/skills，防止雙倍/三倍重複掃描）
     family_skills = []
@@ -488,6 +608,7 @@ def sync_local_cursor_user_dirs(global_skills: list[Path]) -> dict:
 def main() -> None:
     parser = argparse.ArgumentParser(description="Sync industry-scoped rules & skills to repos for Cursor Cloud Agents")
     parser.add_argument("--repo", type=str, default="all", help="Repo name, 'storeasy', 'us3c', or 'all'")
+    parser.add_argument("--rules-only", action="store_true", help="Fast mode: sync only .cursor/rules, AGENTS.md SSOT block, and scripts/")
     args = parser.parse_args()
 
     if args.repo == "all":
@@ -509,11 +630,12 @@ def main() -> None:
         key=lambda x: x.name,
     )
 
-    user_cursor_sync = sync_local_cursor_user_dirs(global_skills)
+    sync_ssot_rules_from_gemini_md()
+    user_cursor_sync = {"mode": "rules_only"} if args.rules_only else sync_local_cursor_user_dirs(global_skills)
 
     results = []
     for repo in repos:
-        results.append(sync_repo(repo, global_skills))
+        results.append(sync_repo(repo, global_skills, rules_only=args.rules_only))
 
     print(
         json.dumps(
