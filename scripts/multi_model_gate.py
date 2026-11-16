@@ -1575,7 +1575,12 @@ def call_model(ep: dict[str, Any], prompt: str, plan: dict[str, Any] | None = No
                     })
                     continue
             try:
-                req_timeout = max(timeout, 210) if att["provider"] == "qwen_direct" else timeout
+                if att["provider"] == "qwen_direct":
+                    req_timeout = max(timeout, 210)
+                elif att["provider"] == "gemini_direct":
+                    req_timeout = max(timeout, 180)
+                else:
+                    req_timeout = timeout
                 raw = _send_chat_request(att["url"], att["key"], att["model"], system_prompt, scoped_prompt, req_timeout)
                 choice = (raw.get("choices") or [{}])[0]
                 content = (choice.get("message") or {}).get("content", "")
