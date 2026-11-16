@@ -503,6 +503,7 @@ def build_endpoints(
         qw_attempts: list[dict[str, Any]] = []
         if qwen_key:
             bases = [
+                "https://token-plan.maas.qianwenaiapi.com/compatible-mode/v1",
                 "https://dashscope.aliyuncs.com/compatible-mode/v1",
                 "https://dashscope-intl.aliyuncs.com/compatible-mode/v1",
             ]
@@ -762,7 +763,7 @@ def _send_chat_request(url: str, key: str, model: str, system_prompt: str, promp
     if url.startswith("https://api.deepseek.com/"):
         payload["max_tokens"] = 16384
         payload["thinking"] = {"type": "disabled"}
-    if "generativelanguage.googleapis.com" in url or "dashscope" in url:
+    if "generativelanguage.googleapis.com" in url or "dashscope" in url or "token-plan" in url:
         payload["max_tokens"] = 8192
 
     def _post(body_obj: dict[str, Any]) -> dict[str, Any]:
@@ -1574,7 +1575,8 @@ def call_model(ep: dict[str, Any], prompt: str, plan: dict[str, Any] | None = No
                     })
                     continue
             try:
-                raw = _send_chat_request(att["url"], att["key"], att["model"], system_prompt, scoped_prompt, timeout)
+                req_timeout = max(timeout, 210) if att["provider"] == "qwen_direct" else timeout
+                raw = _send_chat_request(att["url"], att["key"], att["model"], system_prompt, scoped_prompt, req_timeout)
                 choice = (raw.get("choices") or [{}])[0]
                 content = (choice.get("message") or {}).get("content", "")
                 if not isinstance(content, str) or not content.strip():

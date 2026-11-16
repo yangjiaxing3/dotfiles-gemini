@@ -122,6 +122,8 @@ SHARED_SLASH_COMMAND_SKILLS = {
     "migration-refactoring",
     "writing-plans",
     "humanizer-zh-tw",
+    "modern-web-guidance",
+    "stageshow",
 }
 
 SKIP_DIRS = {".venv", "venv", "node_modules", ".git", "__pycache__", ".unlighthouse", ".claude-plugin", ".github", "evals"}
@@ -185,6 +187,12 @@ def copy_clean_skill_dir(src_dir: Path, dst_dir: Path) -> int:
                 continue
             target_root.mkdir(parents=True, exist_ok=True)
             dst_f = target_root / f
+            if dst_f.is_file():
+                try:
+                    if src_f.stat().st_size == dst_f.stat().st_size and src_f.read_bytes() == dst_f.read_bytes():
+                        continue
+                except OSError:
+                    pass
             if src_f.suffix.lower() == ".md" or not dst_f.exists() or src_f.stat().st_mtime > dst_f.stat().st_mtime or src_f.stat().st_size != dst_f.stat().st_size:
                 shutil.copy2(src_f, dst_f)
                 copied += 1

@@ -1,4 +1,4 @@
-param(
+﻿param(
   [Parameter(Mandatory=$true)]
   [ValidateSet('OPENROUTER_API_KEY','DEEPSEEK_API_KEY','XAI_API_KEY','QWEN_API_KEY','GEMINI_API_KEY','TYPESAFE_API_KEY','OPENAI_API_KEY')]
   [string]$Name
@@ -15,7 +15,7 @@ $tempPath = Join-Path $PSScriptRoot ([guid]::NewGuid().ToString('N') + '.dpapi.x
 ConvertTo-SecureString -String $newText -AsPlainText -Force | Export-Clixml -LiteralPath $tempPath
 $verified = [Net.NetworkCredential]::new('',(Import-Clixml -LiteralPath $tempPath)).Password
 if ($verified -cne $newText) { throw '加密驗證失敗；原金鑰庫未更改' }
-if(Test-Path -LiteralPath $vaultPath){[IO.File]::Replace($tempPath,$vaultPath,$null)}else{[IO.File]::Move($tempPath,$vaultPath)}
+Move-Item -LiteralPath $tempPath -Destination $vaultPath -Force
 # 自動同步至標準 %LOCALAPPDATA% 與 Codex MSIX 沙盒路徑，避免沙盒虛擬化造成金鑰不同步
 $canonicalDir = Join-Path $env:USERPROFILE 'AppData\Local\US3C\Secrets'
 if ($PSScriptRoot -ne $canonicalDir) {

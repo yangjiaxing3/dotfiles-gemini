@@ -35,9 +35,9 @@
        - **硬體/IoT 校準與跨庫契約**：攝影機 FOV 角度計算、IoT 狀態判定、API 欄位契約與資安權限校驗。
   3. **[CRITICAL] 架構簡化強制異質多模型會審 (Cross-Model Simplification Gate — 嚴禁單一 Agent 自作主張)**：
      - 凡涉及**架構簡化、移除抽象層/Wrapper、合併模組、刪除檔案或單次刪減 > 15 行邏輯**，**絕對禁止**單一模型自作主張直接修改！
-     - **模型調度三鐵律（Cursor Plan & 子代理優先 → 官方直連 API → OpenRouter 最後備援）**：
-       1. **`grok` 直接走 Cursor Plan 內建額度；其他模型優先走 Cursor 子代理（Subagent）額度，額度超過或環境無法分派子代理時才打真實外部 API（`multi_model_gate.py`）**。
-       2. **除非直打官方模型 API（`deepseek_direct`, `qwen_direct`, `gemini_direct`, `typesafe`）都失敗後，才走 OpenRouter API**。
+     - **模型調度三鐵律（Plan & 子代理額度優先 → 官方直連 API → OpenRouter 最後備援）**：
+       1. **`grok` 優先走 Cursor Plan；Gemini 外部腳本（`multi_model_gate.py`）預設第一順位清空子程序 `GEMINI_API_KEY`/`GOOGLE_API_KEY`，改走 `agy.exe --mode plan` 消耗 Antigravity Plan Quota；其他模型亦優先走 IDE 子代理額度**。
+       2. **除非明確指示（如 `--force-gemini-api` / `FORCE_GEMINI_API=1`）或 Plan 未登入／Quota 不足失敗，才退回讀取 Windows DPAPI 內的 `GEMINI_API_KEY` / `XAI_API_KEY` 直打官方 API（`deepseek_direct`, `qwen_direct`, `gemini_direct`, `typesafe`）；直連全敗後才走 OpenRouter API**。
        3. **Qwen 模型一律固定使用 `qwen-max`**。
      - 當需呼叫外部 API 會審閘門腳本時（優先執行專案內 `python scripts/multi_model_gate.py review --prompt "..." --git-diff --output temp_multi_review.json`，若專案無 `scripts/` 則回退執行 `~/.gemini/scripts/multi_model_gate.py`；金鑰自動讀取 Windows DPAPI `%LOCALAPPDATA%\US3C\Secrets\multi-model-keys.dpapi.xml` 或 `~/.gemini/secrets/multi_model_keys.env`），真正調動 **Ruflo Swarm V3 全部 5 大異質模型家族** 取得 `request_id` 與 `gate_verdict`（與 `/multi-agent-mode` 及 `/subagent-driven-development` 完全對齊）：
        1. **`🛡️ Agent 0` (`deepseek-flash` + `gemini-4-carbon`)**：檢查工作區邊界與聯動 repo 白名單，防止跨專案誤刪。
@@ -137,7 +137,7 @@
     - **原件與動態 UI 優先原則**：在互動原件（`kit/` 幾何）與動態 UI 轉場（`Collapse`, `Roll`, `Swap`, `Count`, `States`）上**優先使用 `stageshow`**，並結合 `impeccable`（高密度工作台與視覺層級）與 `design-taste-frontend`（反 AI 廉價模板審計）。
     - **全域 UI 圖示與極簡按鈕鐵律（Global UI Icon & Compact Button Standard — 全專案強制適用）**：
       1. **嚴禁 UI Emoji，優先使用 `PulsoIcon` (`pulsoicon-react`) 動態 SVG 圖示**：所有前端畫面（標題、KPI 卡、徽章、按鈕、表格、狀態列、空狀態與提示文字）**一律禁止使用任何 Emoji**；需要視覺輔助時，優先採用 [`pulsoicon-react`](https://github.com/CityPulso/PulsoIcon.git)（與 `lucide-react` 100% 同名相容，內建 9,955 個專屬微動畫 SVG，支援按鈕自動懸停播放與卡片 `data-icon-trigger` 整卡聯動）或乾淨內嵌 SVG（`w-3.5 h-3.5` 或 `w-4 h-4`，`strokeWidth={1.75~2}`）。
-      2. **按鈕強制 2～4 字或純 Icon，移除冗餘說明文字**：所有操作按鈕文案強制精簡為 **2～4 個字**（動賓結構，如 `新增批次`、`產生明細`、`匯出 Excel`、`顯示月薪`、`儲存資料`）或直接使用 **純 SVG Icon 按鈕**（搭配 `title` 與 `aria-label` 無障礙屬性）；嚴禁把整句話塞進按鈕或表頭，並移除卡片標題下方重複標題語意的冗餘說明文字。
+      2. **按鈕強制 2～4 字或純 Icon，移除冗餘說明文字（附受保護約束護欄）**：所有操作按鈕文案強制精簡為 **2～4 個字**（動賓結構，如 `新增批次`、`產生明細`、`匯出 Excel`、`顯示月薪`、`儲存資料`）或直接使用 **純 SVG Icon 按鈕**（搭配 `title` 與 `aria-label` 無障礙屬性）；嚴禁把整句話塞進按鈕或表頭，移除卡片標題下方重複標題語意的冗餘說明與明顯 UI 慣例教學句。**【Protected Invariants 嚴禁誤刪】**：減字時**絕對禁止刪除**不可逆／高風險操作警告（如「刪除後無法復原」）、交易前提／計價／稅額條件、法律合規聲明與專案明訂之 SEO/GEO 核心訊號；凡承載「風險告知 / 交易條件 / 合規背書」的文案一律保留。
       3. **既有 B2B 網站與高密度工作台 4 層次融合守則（克制原則矩陣）**：
          - **層次 1（頂部導覽列、子分頁 `SegmentedTabs`、2～4 字操作按鈕）**：預設 `autoAnimated`（懸停/聚焦觸發），靜止時維持 `24×24` 乾淨線條。
          - **層次 2（Bento 工序卡、模組入口卡、可點擊列表列 `StageshowRow`）**：外層容器加 `data-icon-trigger=""`，滑過整張卡片任意角落即可聯動圖示播放微動畫。

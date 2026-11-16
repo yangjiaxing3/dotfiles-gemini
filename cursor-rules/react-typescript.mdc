@@ -35,3 +35,10 @@ alwaysApply: false
 ## 文件註解
 
 - 使用 JSDoc 格式撰寫函式註解
+
+## 現代原生平台與無障礙（Modern Web Guidance）
+
+- 彈窗與覆蓋層優先採用原生 `<dialog>` + `showModal()` 與 `overscroll-behavior: contain`，禁止手寫 `fixed inset-0` 遮罩或竄改 `document.body.style.overflow`
+- 自訂 `Enter` 鍵監聽第一行必檢 `if (e.nativeEvent.isComposing || e.keyCode === 229) return;`（繁中 IME 防誤送）；日期欄位強制 `<input type="date" lang="en" />`
+- 橫向捲動表格補 `tabIndex={0} role="region" aria-label`，捲軸採標準 `scrollbar-width` / `scrollbar-color`
+- 嚴禁對地址、效期與交易條件使用單行 `truncate` 截斷
