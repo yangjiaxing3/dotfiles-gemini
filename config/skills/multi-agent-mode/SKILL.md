@@ -1,57 +1,36 @@
 ---
 name: multi-agent-mode
-description: "Use when tasks need 5-stage dialectical review (Sentinel/Ideation/Red Team/Synthesis/QA) to prevent blind spots. 多Agent模式/紅隊辯證/multi-agent"
+description: "Use when tasks need Carbon planning & Hydrogen execution/re-plan loop with Grok/Flash/Gemini Decision API. 多Agent模式/紅隊辯證/multi-agent"
 ---
 
-# 多 Agent 模式（0→A→B→C→D→E，Ruflo Swarm V3 全模型正交路由）
+# 多 Agent 模式（Carbon 唯讀定計 ⇄ Hydrogen 執行測試 × 動態重規劃）
 
-目的：用異質模型與角色分離消除「自己寫、自己審、自作主張簡化」的盲點。六個角色依序執行，**不可跳過**。環境無法真的分派子代理時，仍要維持角色分離與停止條件。
+原則：**拒絕憑第一個 Prompt 猜難度的靜態路由**。改採階段式動態接力：先由 **`gemini-4-carbon`** 唯讀探索並定出附「重新規劃觸發條件」的計畫，再交由 **`gemini-4-hydrogen`** 執行改碼、裝套件與測試；遇阻立即交回 Carbon 檢視現狀並修補計畫。切換角色時標示：`### 🤖 Agent [X]（[模型]）：[角色]`。全程繁體中文。
 
-每次切換角色都標示：`### 🤖 Agent [X]（[模型]）：[角色]`。全程繁體中文。
+## 動態執行流程（Plan ⇄ Execute ⇄ Re-plan Loop）
 
-| Phase | 角色 | 主力模型 (`--model`) | 協同 / 備援模型 | 產出與 Ponytail 簡化把關職責 | 停止條件 |
-| :--- | :--- | :--- | :--- | :--- | :--- |
-| **0** | 🛡️ 邊界守門員 | **`deepseek-flash`** | `gemini-4-carbon` | 確認路徑與指令在工作區（或授權聯動 repo）內，防跨庫誤刪 | 越界 → 停止並請求授權 |
-| **A** | 🧠 圖譜與發想 | **`gemini-4-carbon`** | `deepseek-flash` | 查 `graphify` 圖譜呼叫鏈，提 2–3 個方案（標註可重用元件與擬簡化項） | 方案寫完 → B |
-| **B** | 😈 紅隊挑刺 | **`grok-4.7` (Cursor Plan)** | TypeSafe **`jev-1.13.0`** | 直接走 Cursor Plan 內建 Grok 子代理，對方案攻擊 6 個維度並結合 JEV 量化校準評 🟢/🟡/🔴 | 全部評完 → C |
-| **C** | ⚖️ 整合收斂 | **`gemini-4-carbon`** | **`qwen-max`** | 收斂正反意見，寫 `implementation_plan.md`（含擬刪減項目對照表） | 改動 ≥3 檔或刪減架構 → 暫停給使用者審；否則 → D |
-| **D** | 🛠️ 實作與 Fixer | 快改 **`deepseek-flash`**<br/>重構/Fixer **`qwen-max`** | `gemini-4-carbon` | 只改計畫核准的檔案，遵循 `ponytail` 最小完整變更 | 連續 2 次失敗 → 升級 `qwen-max` (`fixer-prompt`) |
-| **E** | 🔍 驗屍與終審 QA | **`deepseek-flash` + `grok-4.7` (Cursor Plan)** | **`jev-1.13.0`** (規格校準)<br/>**`gemini-4-carbon`** (視覺 E2E) | 預演前 3 大致死原因、確認簡化未漏砍規格、跑真實測試與 `@ref` 驗證 | PASS → `walkthrough.md`；FAIL → 回 D（最多 2 輪） |
+| Phase | 角色 | 主力模型 (`--model`) | 核心職責與階段轉換 | 停止 / 交回條件 |
+| :--- | :--- | :--- | :--- | :--- |
+| **0** | 🛡️ 邊界守門 | **`deepseek-flash`** | 亞秒級檢查工作區邊界與授權白名單（**不做靜態難度猜測外包**） | 越界或未授權跨庫 → 停止請求授權 |
+| **A** | 🧠 唯讀定計與重規劃 | **`gemini-4-carbon`** | **唯讀階段**：查 `graphify`/依賴鏈、釐清模糊點，建立計畫並明訂 **Re-plan Triggers** 與受保護禁區 | 計畫與觸發條件完成 → B（高風險）或 C（低風險） |
+| **B** | 😈 紅隊 ＋ 裁決 *(門禁觸發)* | **`grok-4.7` (Cursor Plan)** ＋ **Gemini Decision API** *(與 `jev-1.13.0` 雙軌；額度不足備案 **`qwen4-max-preview`**)* | 僅當 `>=3` 檔、刪架構/`>15` 行、相機/金流/3D 公式/資安時啟動：Grok 攻 6 維度，Decision API 吐結構化 JSON 燈號 | 非 🔴 且高風險已獲使用者確認 → C；🔴 → 回 A 修補計畫 |
+| **C** | 🛠️ 主力執行與測試 | **`gemini-4-hydrogen`** *(額度不足／極端重構備案 **`qwen4-max-preview`**)* | 依 Carbon 計畫改碼、更新套件、執行測試與實機驗證 | **觸發 Re-plan Trigger** → 立即停手交回 **A (`Carbon`)** 修補計畫 |
+| **D** | 🔍 規格核對與終審放行 | **`qwen4-max-preview`** *(備案 **`deepseek-flash`**)* ＋ **Gemini Decision API** | **Qwen / Flash**：逐條核對 100% 規格未縮水並確認最終測試輸出<br/>**Decision API**：高風險任務輸出終審 `PASS / BLOCK` | PASS → `walkthrough.md`；FAIL → 回 A 重估或 C 修正（最多 2 輪） |
 
-## Phase A：只傳相關脈絡（`gemini-4-carbon` + `deepseek-flash`）
+## Re-plan Triggers（Hydrogen 必須停手交回 Carbon 的條件）
 
-只帶與任務直接相關的介面、型別與一層依賴；有 `graphify` 圖譜就先查圖譜確認所有 callers，不要把整個專案丟進來。
-
-## Phase B：六個攻擊維度（`grok-4.7` [Cursor Plan] + TypeSafe `jev-1.13.0`）
-
-1. **髒資料**：空值、極端值、格式錯、編碼錯時會不會崩？
-2. **併發**：多人同時操作會不會髒寫、重複送出、競態？
-3. **時間**：時區、跨月/閏年、歷史資料、快取過期。
-4. **邊界介接**：前後端欄位不一致、API 缺欄位、版本不相容。
-5. **效能**：N+1 查詢、O(n²)、大檔一次讀進記憶體。
-6. **Ponytail 極簡度與防過度簡化雙向審查 (Lean vs. Over-Simplification Gate)**：
-   - **挑過度設計**：有沒有多寫沒人要求的 wrapper/abstraction/config？能不能重用既有 helper？
-   - **防自作主張過度簡化（全模型交叉把關）**：若提案涉及簡化既有架構或刪減 >15 行邏輯，必須同時通過：
-     - `gemini-4-carbon`（確認 `graphify` 圖譜與跨 repo 零斷鏈、3D/UI 視覺無損）
-     - `grok-4.7` (Cursor Plan 直出) + `jev-1.13.0`（對抗式檢查是否誤傷 **3D 模擬器擺放/碰撞公式、DXF 幾何解析、財務精算** 或邊界容錯）
-     - `qwen-max`（架構重構完整性與型別安全收斂）
-     - `deepseek-flash` + `jev-1.13.0`（Spec Compliance 100% 規格未縮水校驗）
-
-紅隊必須引用具體程式碼或資料，不接受「可能有風險」這種空話。
-
-## Phase D & E：極簡實作與驗證要真的跑
-
-- **Phase D（`deepseek-flash` / `qwen-max` 實作守則）**：遵循 `ponytail` 最小完整變更原則（刪除勝於新增、不加多餘抽象層、已知捷徑標註 `// shortcut: <上限>, <升級條件>`），嚴禁未經 A→B→C 多模型會審擅自刪減既有核心邏輯。
-- **Phase E（`deepseek-flash` + `jev-1.13.0` + `grok-4.7` + `gemini-4-carbon` 聯合驗收）**：
-  - 每個任務寫成 `[步驟] → verify: [檢查指令]`，至少跑型別/靜態檢查與相關測試；牽涉前後端串接時要打真實端點。
-  - **UI / E2E 驗證與狀態對比**：優先使用全域 CLI `agent-browser`（Web 端）或 `agent-desktop`（Windows 原生視窗/桌面端）執行 `snapshot` 取得 `@ref` 無障礙結構樹進行秒級結構對比（詳見 `agent-desktop` 技能），並由 `gemini-4-carbon` 驗收最終 1 張 `screenshot` 存證。
-  - 退回 D 時只交「原始目標 + 錯誤輸出 + 出錯檔案」，不帶失敗歷史。
+1. **隱藏依賴浮現**：發現計畫外之跨模組依賴、API 契約不合或必須改動未授權檔案。
+2. **環境/套件假設失效**：更新套件、編譯環境或外部服務回應與唯讀探索時不符。
+3. **執行連敗 2 次**：同一錯誤或測試連續失敗 **2 次**（嚴禁在執行層繼續瞎猜，交回 `Carbon` 檢視現狀修補計畫；若為重度演算法/跨檔硬骨頭，Carbon 重規劃後可指派 `qwen-max` 接手）。
+4. **逼近受保護禁區**：實作時發現可能傷及 3D 幾何、計價毛利、雜湊鏈或只作廢不刪除規則。
 
 ## ⚠️ Gotchas (避坑指南)
 
-- **整合不是投票**：Agent C (`gemini-4-carbon` + `qwen-max`) 要說明為何採用/否決每個紅隊意見，不能只列結論。
-- **小任務別硬套**：單檔、低風險的新增微調直接做；但凡涉及**刪減既有架構、合併模組或 >15 行邏輯簡化**，一律強制觸發多模型會審。
-- **模型路由三鐵律 (`multi_model_gate.py`)**：
-  1. **`grok` 直接走 Cursor Plan 內建額度；其他模型優先走 Cursor 子代理（Subagent）額度，只有在 Cursor 子代理額度超過或環境無法分派子代理時，才打真實外部 API（`multi_model_gate.py`）**。
-  2. **除非直打官方模型 API（`deepseek_direct`, `qwen_direct`, `gemini_direct`, `typesafe`）都失敗後，才走 OpenRouter API**。
-  3. **Qwen 模型一律固定為 `qwen-max`**。
+- **禁止靜態單一廉價外包**：不可只看第一句 Prompt 就把整條長程任務直接鎖死在最便宜模型；低風險也須經唯讀釐清再動手。
+- **Hydrogen 遇阻不硬幹**：觸發任何 Re-plan Trigger 必須交回 `gemini-4-carbon` 檢視現狀並修補計畫，不可原地重試超過 2 次。
+- **勿用散文猜燈號取代 Decision API**：門禁放行一律以結構化 `traffic_light` / `protected_harm` / `spec_shrink` 為準（`scripts/multi_model_gate.py` 支援 `gemini_decision_direct` 與 TypeSafe JEV 雙軌）。
+- **模型路由鐵律 (`multi_model_gate.py`)**：
+  1. `grok` 走 Cursor Plan 內建額度；當需在外部 CLI / 腳本呼叫 Grok（含搜 X.com 貼文或 `--include-grok-api`）時，**第一順位（免 API 費）**呼叫 `grok.exe -p ... [--json-schema ...] --permission-mode plan` 並自動清空子程序 `XAI_API_KEY`，強制讀取 `~/.grok/auth.json` 走 Grok Plan 訂閱額度；**第二順位（備援）**僅在本機未登入 `~/.grok/auth.json` 時才退回 `XAI_API_KEY`。
+  2. Gemini（`Carbon` / `Hydrogen` / `Decision`）預設**第一順位（免 API 費）**清空子程序 `GEMINI_API_KEY` / `GOOGLE_API_KEY`，呼叫 `agy.exe --mode plan` 走 Antigravity Plan 訂閱額度；除非明確指定 `--force-gemini-api`（或 `FORCE_GEMINI_API=1`）或 Plan 未登入／Quota 不足失敗時，才退回**第二順位**讀取 Windows DPAPI 的 `GEMINI_API_KEY` 直打官方 API（`gemini_direct`）。
+  3. 其他直打官方 API（`deepseek_direct`, `qwen_direct`, `typesafe`）及上述第二順位全部失敗後，才走 OpenRouter。
+  4. Qwen 優先使用 `qwen4-max-preview`（DashScope 直連優先，支援 `qwen-max` 與 OpenRouter 備援）。

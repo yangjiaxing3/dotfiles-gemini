@@ -26,33 +26,25 @@ alwaysApply: true
 3. **[CRITICAL OVERRIDE] Plan 與 Mermaid 圖表強制調用 `/diagram-design` 協議**：
    - 凡撰寫或更新任何 **Plan / 架構文件** 且涉及 **`Mermaid` 圖、架構圖、資料流圖、時序圖或 ER 圖**時，強制讀取並遵循 `.agents/skills/diagram-design/SKILL.md`（單圖 `nodes <= 9, edges <= 12`、繁體中文 `12px Noto Sans TC`、同步產出 HTML + SVG + `@2x` PNG 並通過 `self_check.py`）。
 
-## 2. Ruflo Swarm V3 多代理模型分工矩陣 (2026 專業特化雙軌制)
+## 2. Ruflo Swarm V3 多代理模型分工矩陣 (Carbon 唯讀定計 ⇄ Hydrogen 執行重規劃)
 
-- **Phase 0 (`🛡️ Agent 0` 零區安全守門員)**：**`deepseek-flash`**（協同：`gemini-4-carbon`）
-- **Phase 1 (`🧠 Agent A` 知識圖譜與架構發想)**：**`gemini-4-carbon`**（協同：`deepseek-flash`）
-- **Phase 2 (`😈 Agent B` 魔鬼代言人紅隊批判)**：**`grok-4.7`**（協同：TypeSafe `jev-1.13.0` 量化風險校準）
-- **Phase 3 (`⚖️ Agent C` 意見整合與決策收斂)**：**`gemini-4-carbon`** / **`qwen-3.8-max`**
-- **Phase 4 (`🛠️ Agent D` 實作工蜂 & Fixer 除錯救援)**：日常快改 **`deepseek-flash`**；跨模組核心重構或**連續 2 次失敗觸發 Fixer** 強制升級 **`qwen-3.8-max`**
-- **Phase 5 (`🔍 Agent E` 驗屍官 & 終審 QA)**：**`deepseek-flash` + `grok-4.7`** + **`gemini-4-carbon`**（視覺與多模態 E2E）
+- **反靜態路由原則**：禁止憑第一句 Prompt 猜難度就把整趟任務鎖死給廉價模型；改以階段動態交接：
+- **Phase 0 (`🛡️ Agent 0` 邊界守門)**：**`deepseek-flash`**（亞秒級檢查工作區邊界與授權白名單）
+- **Phase A (`🧠 Agent A` 唯讀定計與重規劃)**：**`gemini-4-carbon`**（先唯讀探索依賴與 `graphify`、釐清含糊處，建立附明確 **Re-plan Triggers** 的計畫；遇阻時接手修補計畫）
+- **Phase B (`😈 Agent B` 紅隊 ＋ 裁決，門禁觸發)**：**`grok-4.7`**（Cursor Plan 紅隊批判 6 維度；額度不足備案 **`qwen4-max-preview`**）＋ **Gemini Decision API** / `jev-1.13.0`（極簡 JSON 燈號裁決）
+- **Phase C (`🛠️ Agent C` 執行與測試)**：**`gemini-4-hydrogen`**（接手改碼、更新套件、跑測試；一旦觸發 Re-plan Trigger 立即停手交回 `Carbon`；額度不足或重度跨檔硬骨頭備案 **`qwen4-max-preview`**）
+- **Phase D (`🔍 Agent D` 規格核對與終審放行)**：**`qwen4-max-preview`**（主力核對 100% 規格與測試輸出；備案 **`deepseek-flash`**）＋ **Gemini Decision API** / `jev-1.13.0`（終審 `PASS/BLOCK`）
 
 ## 3. 角色 × 任務 × 產業領域動態技能綁定 (Industry-Aware Role-Scoped Skill Matrix)
 
 `scripts/multi_model_gate.py` 會自動偵測當前專案所屬產業家族（`storeasy` vs `us3c`）與任務領域，為每個角色動態掛載精準技能：
 
-- **`🛡️ Agent 0` (`deepseek-flash`)**：基底 `[accidental-data-loss-prevention, stage-gate-review]` ＋ 任務技能（`debug`: `fixer-prompt, agent-tester`；`backend_api`: `security-audit, agency-testing-api-tester`）。
-- **`🧠 Agent A` (`gemini-4-carbon`)**：基底 `[graphify, ponytail-audit]` ＋ 隨產業與任務切換：
-  - **數據分析 (`data_analysis`)**：
-    - Storeasy 家族：`[storeasy-mini-warehouse-viz, agency-data-consolidation-agent, d3-data-visualization]`
-    - US3C 家族：`[us3c-tradein-margin-pricing, agency-data-consolidation-agent, d3-data-visualization]`
-  - **SEO / 內容 (`seo_content`)**：
-    - Storeasy 家族：`[storeasy-seo-looping, agency-marketing-data-seo-engineer, agency-marketing-geo-aeo-specialist]`
-    - US3C 家族：`[us3c-seo-loop, agent-reach, agency-marketing-geo-aeo-specialist]`
-  - **營運 / 機台 / 後端 (`ops_management` / `backend_api`)**：
-    - Storeasy 家族：`[storeasy-channel-operations, agency-engineering-backend-architect, agency-testing-workflow-optimizer]`
-    - US3C 家族：`[us3c-kiosk-driver-ops, us3c-imcheck-device-qc, us3c-swarm]`
+- **`🛡️ Agent 0 & E-Spec` (`deepseek-flash`)**：基底 `[accidental-data-loss-prevention, decisions-governance, stage-gate-review]` ＋ 任務技能（`debug`: `fixer-prompt, agent-tester`；`backend_api`: `security-audit, agency-testing-api-tester`）。
+- **`🧠 Agent Planner & Re-planner` (`gemini-4-carbon`)**：基底 `[graphify, writing-plans, decisions-governance]` ＋ 隨產業與任務切換（專責唯讀依賴探索、架構定計與重規劃，如 US3C 掛載 `diagram-design, ponytail-audit, us3c-kiosk-driver-ops`）。
+- **`🛠️ Agent Executor & QA` (`gemini-4-hydrogen`)**：基底 `[tdd-workflow, ponytail, verification-quality]` ＋ 隨產業與任務切換（專責改碼、套件更新、測試與視覺 E2E，如 UI 掛載 `stageshow, impeccable, agent-desktop`）。
 - **`😈 Agent B` (`grok-4.7` 紅隊挑刺)**：基底 `[ponytail-review, agency-engineering-code-reviewer]` ＋ 隨產業與任務切換：
   - `data_analysis`：Storeasy 掛載 `storeasy-mini-warehouse-viz, xlsx`；US3C 掛載 `us3c-tradein-margin-pricing, agency-sales-data-extraction-agent, xlsx`（專抓出庫冒充營收、`n<15` 誤給收購上限）。
   - `seo_content`：Storeasy 掛載 `storeasy-seo-looping, content-quality-auditor`；US3C 掛載 `us3c-seo-loop, social-listening-brief, content-quality-auditor`（專抓三站關鍵字競食）。
   - `ops_management`：US3C 掛載 `us3c-kiosk-driver-ops, critical-stress-test`（專抓 `L1~L4` 異常單未同步 `us3cdriverapp`）。
-- **`⚖️ Agent C & 🛠️ Agent D` (`qwen-3.8-max`)**：基底 `[ponytail, decisions-governance]` ＋ 產業實作技能（如 US3C 掛載 `us3c-tradein-margin-pricing, sop-lesson, skillorchestrator`；前端掛載 `impeccable, emil-design-eng`）。
-- **`🔍 Agent E` (終審 QA)**：`[agent-desktop, webapp-testing, verification-quality]`。
+- **`⚖️ Agent Fixer / Phase D` (`qwen4-max-preview`；備案 `deepseek-flash`)**：基底 `[ponytail, decisions-governance]` ＋ 產業重構/終審技能（如 US3C 掛載 `us3c-tradein-margin-pricing, sop-lesson, skillorchestrator`；前端掛載 `impeccable, emil-design-eng`）。
+- **`⚖️ Agent Decision` (Gemini Decision API / `jev-1.13.0`)**：`[ponytail-review, verification-quality]`。
