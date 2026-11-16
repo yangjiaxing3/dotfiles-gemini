@@ -13,9 +13,6 @@ on:
     branches: [master]
     paths:
       - 'config/skills/**'
-      - 'sync-targets.yml'
-      - 'scripts/ci_sync_skills.py'
-      - '.github/workflows/sync-skills-to-repos.yml'
   workflow_dispatch:
     inputs:
       only_repo:
@@ -85,6 +82,19 @@ jobs:
         with:
           path: src
 
+      - name: Preflight - can the token see the target repo?
+        env:
+          GH_TOKEN: ${{ secrets.SKILLS_SYNC_TOKEN }}
+          REPO: ${{ matrix.repo }}
+        run: |
+          if ! out=$(gh api "repos/$REPO" --jq '.full_name + " push=" + (.permissions.push|tostring)' 2>&1); then
+            echo "::error::SKILLS_SYNC_TOKEN cannot access $REPO. Edit the token (https://github.com/settings/personal-access-tokens) -> Repository access -> add $REPO (Contents + Pull requests: Read and write)."
+            echo "Repos visible to this token:"
+            gh api --paginate /user/repos --jq '.[].full_name' 2>&1 | sort | head -50 || true
+            exit 1
+          fi
+          echo "$out"
+          case "$out" in *"push=true") ;; *) echo "::error::token has no write access to $REPO"; exit 1;; esac
       - uses: actions/checkout@v4
         with:
           repository: ${{ matrix.repo }}
