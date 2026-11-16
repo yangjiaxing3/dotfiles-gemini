@@ -98,3 +98,9 @@ config/skills/**/*.tar
 config/skills/**/*.mp4
 config/skills/**/credentials*
 config/skills/**/secrets*
+
+# 7. GitHub Actions: sync global skills to project repos (opens PRs)
+!.github/
+!.github/workflows/
+!.github/workflows/sync-skills-to-repos.yml
+!sync-targets.yml
