@@ -1,0 +1,37 @@
+# Targets for .github/workflows/sync-skills-to-repos.yml
+# Only repos owned by yangjiaxing3. Excluded on purpose: dify, open-seo-temp, Reverseanything, type0,
+# Yangbiz (third-party / no remote), iMCheck + storeasy_group_ordering (owned by JaneChengYang).
+#
+# family : storeasy | us3c  -> decides which industry-only skills are NOT written (see `families`)
+# include: optional list of skill dir names; omit = all global skills (minus family exclusions)
+# enabled: false -> skipped, `note` explains why
+families:
+  us3c:      # gets all except Storeasy-only skills
+    exclude: [storeasy-mini-warehouse-viz, storeasy-channel-operations, storeasy-seo-looping, skp-to-cad-ministorage, storeasy-location-migration]
+  storeasy:  # gets all except US3C-only skills
+    exclude: [us3c-tradein-margin-pricing, us3c-kiosk-driver-ops, us3c-imcheck-device-qc, us3c-swarm, us3c-seo-loop, skillorchestrator, kiosk-image-optimizer, social-listening-brief, agent-reach, sop-lesson, seo-audit, autojev, autojev-completion-review, autojev-model-router, autojev-research-guard, autojev-task-router, autojev-tool-guard, jev-typesafe, jev, typesafe-ai]
+
+targets:
+  # --- Storeasy family ---
+  - {repo: yangjiaxing3/Huanxin-3Dimen, family: storeasy}
+  - {repo: yangjiaxing3/StoreasyFMnew, family: storeasy}
+  - {repo: yangjiaxing3/storeasynewwebsite, family: storeasy}
+  - {repo: yangjiaxing3/storeasycws, family: storeasy}
+  - {repo: yangjiaxing3/StoreasyFinHR, family: storeasy}
+  - {repo: yangjiaxing3/3Dstorage, family: storeasy}
+  - {repo: yangjiaxing3/storeasy-location-lens, family: storeasy}
+  - {repo: yangjiaxing3/move-easy, family: storeasy}
+  - {repo: yangjiaxing3/STOREASY_IT, family: storeasy, enabled: false, note: ".agents is a symlink to .agent on main; skipped to avoid writing .agent/skills"}
+  - {repo: yangjiaxing3/Storeasyworkdivnew, family: storeasy, enabled: false, note: ".agents is a symlink to .agent on main; skipped"}
+  # --- US3C family ---
+  - {repo: yangjiaxing3/711us3cwebsite, family: us3c}
+  - {repo: yangjiaxing3/msi_us3c_recycle, family: us3c}
+  - {repo: yangjiaxing3/us3cdriverapp, family: us3c}
+  - {repo: yangjiaxing3/us3cwebsite-env, family: us3c}
+  - {repo: yangjiaxing3/us3c_mvp, family: us3c}
+  - {repo: yangjiaxing3/beikeshop_v3_jx, family: us3c}
+  - {repo: yangjiaxing3/us3c-shopee-dashboard, family: us3c}
+  - {repo: yangjiaxing3/logistic_driver, family: us3c}
+  - {repo: yangjiaxing3/us3c-next, family: us3c, enabled: false, note: ".agents is a symlink to .agent on main; skipped"}
+  - {repo: yangjiaxing3/usdwarrantynew, family: us3c, enabled: false, note: ".agents is a symlink to .agent on main; skipped"}
+  - {repo: yangjiaxing3/price_crawler, family: us3c, enabled: false, note: ".agents is a symlink to .agent on main; skipped"}

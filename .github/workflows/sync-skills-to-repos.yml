@@ -1,0 +1,139 @@
+name: Sync global skills to project repos
+
+# On every push to master that changes the global skills (or the target list), open/update ONE PR per
+# project repo from branch `chore/sync-global-skills`. Writes ONLY `.agents/skills/**` in the target.
+# Never touches `.cursor/skills` or `.agent/skills`. Never merges: the owner merges each PR himself.
+#
+# Requires repo secret SKILLS_SYNC_TOKEN (fine-grained PAT, see docs/ in the PR description):
+#   Repository access: the target repos in sync-targets.yml
+#   Permissions: Contents = Read and write, Pull requests = Read and write (Metadata = Read is implicit)
+
+on:
+  push:
+    branches: [master]
+    paths:
+      - 'config/skills/**'
+      - 'sync-targets.yml'
+      - 'scripts/ci_sync_skills.py'
+      - '.github/workflows/sync-skills-to-repos.yml'
+  workflow_dispatch:
+    inputs:
+      only_repo:
+        description: 'Optional: sync just one repo (owner/name), e.g. yangjiaxing3/move-easy'
+        required: false
+        default: ''
+
+permissions:
+  contents: read
+
+concurrency:
+  group: sync-skills-to-repos
+  cancel-in-progress: false
+
+jobs:
+  plan:
+    runs-on: ubuntu-latest
+    outputs:
+      matrix: ${{ steps.m.outputs.matrix }}
+      count: ${{ steps.m.outputs.count }}
+    steps:
+      - uses: actions/checkout@v4
+      - id: m
+        env:
+          ONLY_REPO: ${{ github.event.inputs.only_repo }}
+        run: |
+          pip install --quiet pyyaml
+          python - <<'PY'
+          import json, os, yaml
+          cfg = yaml.safe_load(open('sync-targets.yml', encoding='utf-8'))
+          only = os.environ.get('ONLY_REPO', '').strip()
+          items = []
+          for t in cfg['targets']:
+              if not t.get('enabled', True):
+                  print(f"skip {t['repo']}: {t.get('note', 'disabled')}")
+                  continue
+              if only and t['repo'] != only:
+                  continue
+              excl = cfg['families'][t['family']]['exclude']
+              items.append({'repo': t['repo'],
+                            'include': ','.join(t.get('include', [])),
+                            'exclude': ','.join(excl)})
+          with open(os.environ['GITHUB_OUTPUT'], 'a') as f:
+              f.write('matrix=' + json.dumps({'include': items}) + '\n')
+              f.write(f'count={len(items)}\n')
+          print(f'{len(items)} target repos')
+          PY
+
+  sync:
+    needs: plan
+    if: needs.plan.outputs.count != '0'
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      max-parallel: 4
+      matrix: ${{ fromJSON(needs.plan.outputs.matrix) }}
+    env:
+      BRANCH: chore/sync-global-skills
+    steps:
+      - name: Check secret
+        env:
+          T: ${{ secrets.SKILLS_SYNC_TOKEN }}
+        run: |
+          if [ -z "$T" ]; then echo "::error::Secret SKILLS_SYNC_TOKEN is not set (see sync-targets.yml / PR description)"; exit 1; fi
+
+      - uses: actions/checkout@v4
+        with:
+          path: src
+
+      - uses: actions/checkout@v4
+        with:
+          repository: ${{ matrix.repo }}
+          token: ${{ secrets.SKILLS_SYNC_TOKEN }}
+          path: tgt
+          fetch-depth: 1
+
+      - name: Copy skills into tgt/.agents/skills only
+        id: copy
+        run: |
+          set +e
+          python3 src/scripts/ci_sync_skills.py --src src/config/skills --target tgt \
+            --include "${{ matrix.include }}" --exclude "${{ matrix.exclude }}"
+          rc=$?
+          if [ $rc -eq 3 ]; then echo "skipped=true" >> "$GITHUB_OUTPUT"; exit 0; fi
+          exit $rc
+
+      - name: Commit and open/update PR (never merges)
+        if: steps.copy.outputs.skipped != 'true'
+        env:
+          GH_TOKEN: ${{ secrets.SKILLS_SYNC_TOKEN }}
+          REPO: ${{ matrix.repo }}
+          SRC_SHA: ${{ github.sha }}
+        run: |
+          set -euo pipefail
+          cd tgt
+          git config user.name  "skills-sync[bot]"
+          git config user.email "skills-sync@users.noreply.github.com"
+          BASE=$(gh repo view "$REPO" --json defaultBranchRef -q .defaultBranchRef.name)
+          # -f: many target repos .gitignore .agents/; this is the only path we ever stage.
+          git add -f -A -- .agents/skills
+          # Guard: anything staged or modified outside .agents/skills aborts the run.
+          if git status --porcelain | grep -v -E '^.{2} "?\.agents/skills/' ; then
+            echo "::error::unexpected changes outside .agents/skills"; exit 1
+          fi
+          if git diff --cached --quiet; then echo "$REPO: no changes"; exit 0; fi
+          git checkout -B "$BRANCH"
+          git commit -q -m "chore: sync global skills from dotfiles-gemini@${SRC_SHA::7}"
+          git fetch -q origin "$BRANCH" 2>/dev/null || true
+          if git rev-parse -q --verify "origin/$BRANCH" >/dev/null && git diff --quiet "origin/$BRANCH" HEAD; then
+            echo "$REPO: branch already up to date"; exit 0
+          fi
+          git push --force origin "$BRANCH"
+          BODY=$(printf 'Automated sync of global skills from yangjiaxing3/dotfiles-gemini@%s.\n\n- Writes only `.agents/skills/**` (never `.cursor/skills` or `.agent/skills`).\n- Industry-only skills of the other family are not written.\n- Review and merge manually; this workflow never merges.\n' "$SRC_SHA")
+          N=$(gh pr list --repo "$REPO" --head "$BRANCH" --state open --json number -q '.[0].number')
+          if [ -z "$N" ]; then
+            gh pr create --repo "$REPO" --base "$BASE" --head "$BRANCH" \
+              --title "chore: sync global skills (.agents/skills)" --body "$BODY"
+          else
+            gh pr edit "$N" --repo "$REPO" --body "$BODY"
+            echo "$REPO: updated PR #$N"
+          fi
