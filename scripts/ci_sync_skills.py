@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import argparse
 import fnmatch
+import hashlib
 import os
 import re
 import shutil
@@ -65,6 +66,33 @@ def sync_skill(src: Path, dst: Path) -> tuple[int, int]:
                 p.rmdir()
     return copied, deleted
 
+GATE_MARK_BEGIN = "<!-- BEGIN dotfiles-gemini cloud-gate (auto-added by CI, do not edit) -->"
+GATE_MARK_END = "<!-- END dotfiles-gemini cloud-gate -->"
+
+
+def install_gate(gate: Path, skill_dst: Path) -> str:
+    """Put the latest multi_model_gate.py inside the synced multi-agent-mode skill (.agents/skills only) and
+    append a short pointer to the target's SKILL.md so cloud agents run it instead of a stale repo copy."""
+    sdir = skill_dst / "scripts"
+    sdir.mkdir(parents=True, exist_ok=True)
+    shutil.copy2(gate, sdir / "multi_model_gate.py")
+    digest = hashlib.sha256(gate.read_bytes()).hexdigest()[:12]
+    md = skill_dst / "SKILL.md"
+    text = md.read_text(encoding="utf-8")
+    text = re.sub(re.escape(GATE_MARK_BEGIN) + r".*?" + re.escape(GATE_MARK_END) + r"\s*", "", text, flags=re.S).rstrip() + "\n"
+    block = (
+        f"\n{GATE_MARK_BEGIN}\n"
+        "## ☁️ 雲端 / Linux 執行路徑（CI 自動附加）\n\n"
+        "- 雲端 Agent（Cursor Cloud、Linux、無 `agy` / `grok` 訂閱登入）一律執行本 skill 內的全域最新版會審腳本，"
+        "不要用 repo 根目錄 `scripts/multi_model_gate.py`（可能是舊版），也不要用 `C:\\Users\\...` 路徑：\n\n"
+        "  `python .agents/skills/multi-agent-mode/scripts/multi_model_gate.py review --prompt \"...\" --git-diff --output temp_multi_review.json`\n\n"
+        "- 通道只走環境變數中的 API key；Qwen 的 Token Plan / Gemini 直連逾時已放寬（Qwen ≥210s、Gemini ≥180s）。\n"
+        f"- 腳本版本指紋：sha256:{digest}（來自 dotfiles-gemini `scripts/multi_model_gate.py`）。\n"
+        f"{GATE_MARK_END}\n"
+    )
+    md.write_text(text + block, encoding="utf-8", newline="\n")
+    return digest
+
 
 def main() -> int:
     ap = argparse.ArgumentParser()
@@ -72,6 +100,7 @@ def main() -> int:
     ap.add_argument("--target", required=True, help="checked-out target repo root")
     ap.add_argument("--include", default="", help="comma list; empty = all global skills")
     ap.add_argument("--exclude", default="", help="comma list of skill dirs never written (opposite-industry skills)")
+    ap.add_argument("--gate", default="", help="path to scripts/multi_model_gate.py; installed into multi-agent-mode/scripts/")
     a = ap.parse_args()
 
     src, target = Path(a.src), Path(a.target)
@@ -104,6 +133,10 @@ def main() -> int:
         c, r = sync_skill(d, dst_root / d.name)
         files += c
         removed += r
+    gate = Path(a.gate) if a.gate else None
+    if gate and gate.is_file() and any(d.name == "multi-agent-mode" for d in chosen):
+        digest = install_gate(gate, dst_root / "multi-agent-mode")
+        print(f"installed multi_model_gate.py sha256:{digest} -> {dst_root / 'multi-agent-mode' / 'scripts'}")
     print(f"synced {len(chosen)} skills, {files} files copied, {removed} stale files removed -> {dst_root}")
     return 0
 
