@@ -7,6 +7,7 @@ Exit codes: 0 ok (changes may or may not exist), 3 target skipped (.agents is a 
 from __future__ import annotations
 
 import argparse
+import fnmatch
 import os
 import re
 import shutil
@@ -31,6 +32,38 @@ def copy_clean(src: Path, dst: Path) -> int:
             shutil.copy2(p, out / f)
             n += 1
     return n
+
+# Basename patterns the dotfiles-gemini .gitignore keeps out of config/skills (mirror of its rules).
+GITIGNORED_PATTERNS = ["package-lock.json", ".env", ".env.*", "*.pem", "*.key", "*.pfx", "*.p12", "*.sqlite", "*.db",
+                       "*.pyc", "*.pyo", "*.zip", "*.gz", "*.tar", "*.mp4", "credentials*", "secrets*"]
+
+
+def protected_in_target(rel: Path, size: int) -> bool:
+    """True if a target-only file could never have come from the sync, so it must never be deleted."""
+    if any(part in SKIP_DIRS or part.startswith(".bsk") for part in rel.parts[:-1]):
+        return True
+    name = rel.name
+    if name.startswith(".") or Path(name).suffix.lower() in SKIP_EXTS or size > MAX_FILE_BYTES:
+        return True
+    return any(fnmatch.fnmatch(name, pat) for pat in GITIGNORED_PATTERNS)
+
+
+def sync_skill(src: Path, dst: Path) -> tuple[int, int]:
+    """Copy eligible files src -> dst (overwrite). Delete a dst file only if it is absent from src
+    AND it would have been eligible to sync. Skipped-by-size/ext/.gitignore files are left untouched."""
+    copied = copy_clean(src, dst)
+    deleted = 0
+    if dst.is_dir():
+        for p in sorted(dst.rglob("*"), reverse=True):
+            rel = p.relative_to(dst)
+            if p.is_file():
+                if (src / rel).exists() or protected_in_target(rel, p.stat().st_size):
+                    continue
+                p.unlink()
+                deleted += 1
+            elif p.is_dir() and not any(p.iterdir()):
+                p.rmdir()
+    return copied, deleted
 
 
 def main() -> int:
@@ -66,12 +99,12 @@ def main() -> int:
         if child.is_dir() and (child.name in exclude or child.name.startswith("source-command-")):
             shutil.rmtree(child, ignore_errors=True)
 
-    files = 0
+    files = removed = 0
     for d in chosen:
-        if (dst_root / d.name).exists():
-            shutil.rmtree(dst_root / d.name)  # replace whole skill dir so deletions propagate
-        files += copy_clean(d, dst_root / d.name)
-    print(f"synced {len(chosen)} skills, {files} files -> {dst_root}")
+        c, r = sync_skill(d, dst_root / d.name)
+        files += c
+        removed += r
+    print(f"synced {len(chosen)} skills, {files} files copied, {removed} stale files removed -> {dst_root}")
     return 0
 
 
