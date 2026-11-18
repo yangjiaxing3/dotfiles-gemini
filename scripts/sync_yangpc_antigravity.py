@@ -102,7 +102,8 @@ def adapt_home_paths_in_file(file_path: Path, target_home: Path) -> bool:
         if updated != content:
             file_path.write_text(updated, encoding="utf-8")
             return True
-    except Exception:
+    except OSError:
+        # 忽略唯讀或無權限檔案的家目錄路徑替換失敗，不中斷其餘檔案套用
         pass
     return False
 
@@ -119,7 +120,7 @@ def export_bundle(dropbox_sync_dir: Path) -> dict:
 
     dropbox_sync_dir.mkdir(parents=True, exist_ok=True)
     # 1. 複製核心單檔
-    for fname in ("GEMINI.md", "README.md", "WALKTHROUGH_SWARM_V3_AND_SKILLS.md", "settings.json", ".gitignore"):
+    for fname in ("GEMINI.md", "README.md", "WALKTHROUGH_SWARM_V3_AND_SKILLS.md", "settings.json", ".gitignore", "sync-targets.yml"):
         src_f = GEMINI_DIR / fname
         if src_f.is_file():
             shutil.copy2(src_f, dropbox_sync_dir / fname)
@@ -175,7 +176,7 @@ def apply_bundle(source_dir: Path) -> dict:
 
     # 若來源不是 ~/.gemini 本身（例如從 Dropbox 執行），先複製至 ~/.gemini
     if source_dir != target_gemini.resolve():
-        for fname in ("GEMINI.md", "README.md", "WALKTHROUGH_SWARM_V3_AND_SKILLS.md", "settings.json"):
+        for fname in ("GEMINI.md", "README.md", "WALKTHROUGH_SWARM_V3_AND_SKILLS.md", "settings.json", "sync-targets.yml"):
             src_f = source_dir / fname
             if src_f.is_file():
                 shutil.copy2(src_f, target_gemini / fname)
@@ -227,17 +228,33 @@ def apply_bundle(source_dir: Path) -> dict:
                 if f.is_file() and adapt_home_paths_in_file(f, HOME):
                     adapted_files += 1
 
-    # 自動同步目標電腦 GitHub 各專案下的 scripts/multi_model_gate.py 與本機 DPAPI 金鑰工蜂腳本
-    gate_src = target_gemini / "scripts" / "multi_model_gate.py"
+    # 自動同步目標電腦 GitHub 各專案下的確定性檢查/閘門腳本與本機 DPAPI 金鑰工蜂腳本
+    sync_script_names = (
+        "multi_model_gate.py",
+        "rule_lint.py",
+        "skill_router.py",
+        "skill_eval_dataset.json",
+        "bootstrap_cursor_cloud.py",
+    )
     github_root = HOME / "Documents" / "GitHub"
     synced_repos = 0
-    if gate_src.is_file() and github_root.is_dir():
-        for repo_gate in github_root.glob("*/scripts/multi_model_gate.py"):
-            try:
-                shutil.copy2(gate_src, repo_gate)
+    if github_root.is_dir():
+        for repo_dir in sorted(github_root.iterdir()):
+            scripts_dir_repo = repo_dir / "scripts"
+            if not (scripts_dir_repo / "multi_model_gate.py").is_file() and not (scripts_dir_repo / "rule_lint.py").is_file():
+                continue
+            repo_updated = False
+            for sname in sync_script_names:
+                src_script = target_gemini / "scripts" / sname
+                if src_script.is_file():
+                    try:
+                        shutil.copy2(src_script, scripts_dir_repo / sname)
+                        repo_updated = True
+                    except OSError:
+                        # 忽略單一檔案鎖定或權限異常，確保其餘腳本與倉庫持續套用
+                        pass
+            if repo_updated:
                 synced_repos += 1
-            except OSError:
-                pass
 
     local_app_data = Path(os.environ.get("LOCALAPPDATA", str(HOME / "AppData" / "Local")))
     us3c_secrets_dir = local_app_data / "US3C" / "Secrets"
@@ -270,7 +287,8 @@ def apply_bundle(source_dir: Path) -> dict:
                             encoding="utf-8",
                         )
                         dpapi_migrated = True
-        except Exception:
+        except (OSError, subprocess.SubprocessError):
+            # 本機無 DPAPI 權限或 PowerShell 不可用時略過自動遷移，保留原環境檔案
             pass
 
     # 呼叫 sync_skills_to_cloud_repos.py 內建之本機 Cursor 真實目錄同步與 sync_skills_to_agents.py

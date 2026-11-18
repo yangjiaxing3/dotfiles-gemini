@@ -12,7 +12,7 @@ Cursor Cloud Agents 容器啟動自動掛載與單一真相來源 (SSOT) 自癒�
    `.cursor/rules/engineering-core.mdc` 建立 `~/.gemini/GEMINI.md` 鏡像，徹底消除雲端與本機路徑落差。
 4. 自動校驗並同步專案根目錄 `AGENTS.md` 的受管區塊 `<!-- BEGIN_LEAN_TRIAD_SSOT --> ... <!-- END_LEAN_TRIAD_SSOT -->`，
    確保雲端系統提示唯一載入的 `AGENTS.md` 與 `.cursor/rules/engineering-core.mdc` 永遠 100% 同源不分裂。
-5. 自動將當前專案內的 `scripts/skill_router.py`、`scripts/multi_model_gate.py`、`scripts/skill_eval_dataset.json`
+5. 自動將當前專案內的 `scripts/skill_router.py`、`scripts/multi_model_gate.py`、`scripts/rule_lint.py`、`scripts/skill_eval_dataset.json`
    鏡像至 `~/.gemini/scripts/`。
 """
 from __future__ import annotations
@@ -34,13 +34,11 @@ CANONICAL_AGENTS_SSOT_BLOCK = """<!-- BEGIN_LEAN_TRIAD_SSOT -->
 
 > 本區塊由 `scripts/sync_skills_to_cloud_repos.py` 與 `scripts/bootstrap_cursor_cloud.py` 自 `~/.gemini/GEMINI.md` 及 `.cursor/rules/engineering-core.mdc` 自動同步鎖定；請勿單獨手改，避免本機與雲端規則分裂。
 
-- **常駐底層引擎**：`🧭 Graphify 圖譜導航` + `🧰 Role-Scoped Skills 動態掛載` + `✂️ Ponytail 極簡守則` 為常駐引擎；刪減 `> 15` 行、移除抽象層／檔案或指定 `/multi-agent-mode` 時強制執行 `python3 scripts/multi_model_gate.py review --prompt "..." --git-diff --output temp_multi_review.json`。
-- **確定性路由與多模型門禁**：
-  - 檢索最佳技能：`python3 scripts/skill_router.py route "<任務描述>"`
-  - 預覽角色×任務技能矩陣：`python3 scripts/multi_model_gate.py plan-skills --prompt "<任務描述>"`
-- **全域 UI 圖示與極簡按鈕鐵律（`impeccable` × `stageshow` × `design-taste-frontend`）**：
-  - **嚴禁 UI Emoji**：頁面標題、KPI、徽章、按鈕、表格與提示文字一律禁止使用 Emoji；視覺引導統一使用乾淨 SVG 或 `lucide-react` 圖示。
-  - **按鈕限 2～4 字或純 Icon**：操作按鈕強制精簡為 **2～4 個字**（如 `新增批次`、`匯出 Excel`、`顯示月薪`）或純 SVG Icon 按鈕（必備 `title` 與 `aria-label`），並移除重複標題語意的冗餘說明文字。
+- **常駐底層引擎與受保護禁區**：`🧭 Graphify 圖譜導航` + `🧰 Role-Scoped Skills 動態掛載` + `✂️ Ponytail 極簡守則` 為常駐引擎；嚴禁簡化 3D 空間幾何／財務計價／硬體 IoT FOV 校準與跨庫 API 契約。刪減 `> 15` 行、移除抽象層／檔案或指定 `/multi-agent-mode` 時強制執行 `python3 scripts/multi_model_gate.py review --prompt "..." --git-diff --output temp_multi_review.json`（Plan／子代理優先 → 官方直連 → OpenRouter；Qwen 固定 `qwen-max`）。
+- **確定性門禁與技能路由**：
+  - 改碼後強制執行確定性檢查：`python3 scripts/rule_lint.py --git-diff`（自動攔截 UI Emoji、按鈕過長或缺 `aria-label`/`title`、`<input type="date" lang="en" />` 缺漏、`dangerouslySetInnerHTML`、`.skip`／空 `catch` 與 `TODO:`/`FIXME:`/`HACK:`/`XXX:` 藉口註解；僅允許 `// shortcut: <上限條件>, <何時該升級>`）。
+  - 前端 UI 遵循 `stageshow` × `impeccable` × `design-taste-frontend`（詳見 `.cursor/rules/react-typescript.mdc`）；精簡按鈕時**嚴禁刪除**不可逆風險警告、交易計價／稅額條件、合規聲明與專案 SEO/GEO 訊號。
+  - 檢索最佳技能：`python3 scripts/skill_router.py route "<任務描述>"` | 預覽技能矩陣：`python3 scripts/multi_model_gate.py plan-skills --prompt "<任務描述>"`
 - **收尾誠實揭露與極簡防重複回條（Final-Turn Compact Lean-Triad Receipt）**：
   - **🚫 嚴禁輸出回條之場景（防 Token 浪費）**：等待背景任務（`run_command` / `Shell` / subagent）完成的中繼進度回覆、純合併／部署狀態回報、澄清提問、純問答或閒聊，或**同一任務無新程式碼變更時，絕對禁止附上執行回條**。
   - **🚫 嚴禁正文與回條內容重複（Anti-Duplication Rule）**：回條每欄僅限填寫**關鍵字、路徑、行數或指令結果**（每欄 `<= 60` 字），**嚴禁把正文寫過的結論、PR 編號或背景敘述重抄進回條**；反之，已寫入回條的測試通過數、行數統計與略過邊界，正文**不再重複條列**。
@@ -51,7 +49,7 @@ CANONICAL_AGENTS_SSOT_BLOCK = """<!-- BEGIN_LEAN_TRIAD_SSOT -->
     - 🧰 **Skills**：`<Skills>`
     - 🧭 **Graphify**：`<節點 / update>`
     - ✂️ **Ponytail**：`+<新增> / -<刪除> 行 (shortcut: <無或註記>)`
-    - ⚖️ **Gate & QA**：`<會審門禁與測試通過數>`
+    - ⚖️ **Gate & QA**：`<multi_model_gate 真實 verdict/score/req_ids（若未跑腳本強制填「未執行 multi_model_gate」，嚴禁單一模型自評冒充）＋ 測試通過數>`
     - ⚠️ **邊界**：`<略過項目與風險>`
     ```
 <!-- END_LEAN_TRIAD_SSOT -->"""
@@ -64,6 +62,7 @@ def _safe_link_or_copy_dir(src: Path, dst: Path) -> None:
         if os.path.realpath(src) == os.path.realpath(dst) and dst.exists():
             return
     except OSError:
+        # Ignore realpath resolution errors on dangling symlinks and continue
         pass
     dst.parent.mkdir(parents=True, exist_ok=True)
     if dst.is_symlink() or dst.is_file():
@@ -73,6 +72,7 @@ def _safe_link_or_copy_dir(src: Path, dst: Path) -> None:
             os.symlink(src, dst, target_is_directory=True)
             return
         except OSError:
+            # Fall back to per-item copy or symlink when directory symlink is unsupported
             pass
     dst.mkdir(parents=True, exist_ok=True)
     for item in src.iterdir():
@@ -162,7 +162,7 @@ def main() -> None:
 
     gemini_scripts = HOME / ".gemini" / "scripts"
     gemini_scripts.mkdir(parents=True, exist_ok=True)
-    for fname in ("skill_router.py", "multi_model_gate.py", "skill_eval_dataset.json", "bootstrap_cursor_cloud.py"):
+    for fname in ("skill_router.py", "multi_model_gate.py", "rule_lint.py", "skill_eval_dataset.json", "bootstrap_cursor_cloud.py"):
         src_f = SCRIPT_DIR / fname
         dst_f = gemini_scripts / fname
         if src_f.is_file():
@@ -170,6 +170,7 @@ def main() -> None:
                 if os.path.realpath(src_f) != os.path.realpath(dst_f):
                     shutil.copy2(src_f, dst_f)
             except OSError:
+                # Ignore permission or symlink path resolution errors on read-only mount
                 pass
 
     print(f"[CursorCloudBootstrap] Ready: repo={REPO_ROOT.name}, skills={repo_skills}")

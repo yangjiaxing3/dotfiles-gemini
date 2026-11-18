@@ -60,7 +60,20 @@ US3C_FAMILY_REPOS = [
     "Yangbiz",
 ]
 
-ALL_MANAGED_REPOS = STOREASY_FAMILY_REPOS + US3C_FAMILY_REPOS
+SHARED_FAMILY_REPOS = [
+    "YoloMono",
+]
+
+GENERIC_FAMILY_REPOS = [
+    "CADCraft",
+    "DesignCraft",
+    "Yangs-BizMarketing",
+    "botmemeory",
+    "newphamasys",
+    "sitemap",
+]
+
+ALL_MANAGED_REPOS = STOREASY_FAMILY_REPOS + US3C_FAMILY_REPOS + SHARED_FAMILY_REPOS + GENERIC_FAMILY_REPOS
 
 STOREASY_ONLY_SKILLS = {
     "storeasy-mini-warehouse-viz",
@@ -133,6 +146,10 @@ MAX_FILE_BYTES = 256 * 1024  # 256 KB 上限，避免大型二進位或快取檔
 
 def get_repo_family(repo_name: str) -> str:
     low = repo_name.lower()
+    if repo_name in SHARED_FAMILY_REPOS or low == "yolomono":
+        return "shared"
+    if repo_name in GENERIC_FAMILY_REPOS:
+        return "generic"
     if (
         repo_name in US3C_FAMILY_REPOS
         or "us3c" in low
@@ -158,17 +175,20 @@ def read_frontmatter_name(skill_md: Path) -> str:
             if re.match(r"^[a-z0-9-]{1,64}$", val):
                 return val
     except Exception:
+        # Fall back to directory name when SKILL.md frontmatter cannot be read
         pass
     return skill_md.parent.name
 
 
-def copy_clean_skill_dir(src_dir: Path, dst_dir: Path) -> int:
+def copy_clean_skill_dir(src_dir: Path, dst_dir: Path, dry_run: bool = False) -> int:
     """僅複製純淨輕量的 Skill 檔案（SKILL.md、references、scripts 等），排除 .venv 與 node_modules。"""
-    try:
-        if (dst_dir.is_symlink() or dst_dir.is_file()) and not dst_dir.is_dir():
-            dst_dir.unlink(missing_ok=True)
-    except OSError:
-        pass
+    if not dry_run:
+        try:
+            if (dst_dir.is_symlink() or dst_dir.is_file()) and not dst_dir.is_dir():
+                dst_dir.unlink(missing_ok=True)
+        except OSError:
+            # Ignore unlink errors on stale symlinks or files before overwriting skill directory
+            pass
     copied = 0
     for root, dirs, files in os.walk(src_dir):
         dirs[:] = [d for d in dirs if d not in SKIP_DIRS and not d.startswith(".bsk")]
@@ -185,21 +205,24 @@ def copy_clean_skill_dir(src_dir: Path, dst_dir: Path) -> int:
                     continue
             except OSError:
                 continue
-            target_root.mkdir(parents=True, exist_ok=True)
+            if not dry_run:
+                target_root.mkdir(parents=True, exist_ok=True)
             dst_f = target_root / f
             if dst_f.is_file():
                 try:
                     if src_f.stat().st_size == dst_f.stat().st_size and src_f.read_bytes() == dst_f.read_bytes():
                         continue
                 except OSError:
+                    # Fall through to mtime/size check when direct byte comparison fails
                     pass
             if src_f.suffix.lower() == ".md" or not dst_f.exists() or src_f.stat().st_mtime > dst_f.stat().st_mtime or src_f.stat().st_size != dst_f.stat().st_size:
-                shutil.copy2(src_f, dst_f)
+                if not dry_run:
+                    shutil.copy2(src_f, dst_f)
                 copied += 1
     return copied
 
 
-def ensure_gitignore_allows_cloud_skills(repo: Path) -> bool:
+def ensure_gitignore_allows_cloud_skills(repo: Path, dry_run: bool = False) -> bool:
     """修正阻擋 .cursor/rules 或 .agents/skills 上傳 GitHub 的 .gitignore 規則。"""
     gi = repo / ".gitignore"
     if not gi.is_file():
@@ -225,29 +248,37 @@ def ensure_gitignore_allows_cloud_skills(repo: Path) -> bool:
     updated = re.sub(r"(?m)^\.agent/skills/taste-skill/\s*\n?", "", updated)
 
     if updated != original:
-        gi.write_text(updated, encoding="utf-8")
+        if not dry_run:
+            gi.write_text(updated, encoding="utf-8")
         return True
     return False
 
 
-def ensure_cursor_environment_json(repo: Path) -> None:
+def ensure_cursor_environment_json(repo: Path, dry_run: bool = False) -> bool:
     """建立或更新 .cursor/environment.json 供 Cursor Cloud Agents 啟動時自動執行 bootstrap（保留 Laravel 等無該檔之雲端 DB 設定）。"""
     env_json_path = repo / ".cursor" / "environment.json"
     if (repo / "artisan").is_file() and not env_json_path.is_file():
-        return
-    env_json_path.parent.mkdir(parents=True, exist_ok=True)
+        return False
     cmd = "python3 scripts/bootstrap_cursor_cloud.py || python scripts/bootstrap_cursor_cloud.py || true"
+    original_text = ""
     data = {}
     if env_json_path.is_file():
         try:
-            data = json.loads(env_json_path.read_text(encoding="utf-8"))
+            original_text = env_json_path.read_text(encoding="utf-8")
+            data = json.loads(original_text)
         except Exception:
+            # Replace malformed environment.json with valid bootstrap configuration
             data = {}
     if "install" not in data:
         data["install"] = cmd
     elif "bootstrap_cursor_cloud.py" not in str(data.get("install", "")):
         data["install"] = f"{data['install']} && ({cmd})"
-    env_json_path.write_text(json.dumps(data, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+    new_text = json.dumps(data, ensure_ascii=False, indent=2) + "\n"
+    changed = (not env_json_path.is_file()) or (new_text != original_text)
+    if changed and not dry_run:
+        env_json_path.parent.mkdir(parents=True, exist_ok=True)
+        env_json_path.write_text(new_text, encoding="utf-8")
+    return changed
 
 
 def has_git_symlink_architecture(repo: Path) -> bool:
@@ -273,13 +304,11 @@ CANONICAL_AGENTS_SSOT_BLOCK = """<!-- BEGIN_LEAN_TRIAD_SSOT -->
 
 > 本區塊由 `scripts/sync_skills_to_cloud_repos.py` 與 `scripts/bootstrap_cursor_cloud.py` 自 `~/.gemini/GEMINI.md` 及 `.cursor/rules/engineering-core.mdc` 自動同步鎖定；請勿單獨手改，避免本機與雲端規則分裂。
 
-- **常駐底層引擎**：`🧭 Graphify 圖譜導航` + `🧰 Role-Scoped Skills 動態掛載` + `✂️ Ponytail 極簡守則` 為常駐引擎；刪減 `> 15` 行、移除抽象層／檔案或指定 `/multi-agent-mode` 時強制執行 `python3 scripts/multi_model_gate.py review --prompt "..." --git-diff --output temp_multi_review.json`。
-- **確定性路由與多模型門禁**：
-  - 檢索最佳技能：`python3 scripts/skill_router.py route "<任務描述>"`
-  - 預覽角色×任務技能矩陣：`python3 scripts/multi_model_gate.py plan-skills --prompt "<任務描述>"`
-- **全域 UI 圖示與極簡按鈕鐵律（`impeccable` × `stageshow` × `design-taste-frontend`）**：
-  - **嚴禁 UI Emoji**：頁面標題、KPI、徽章、按鈕、表格與提示文字一律禁止使用 Emoji；視覺引導統一使用乾淨 SVG 或 `lucide-react` 圖示。
-  - **按鈕限 2～4 字或純 Icon**：操作按鈕強制精簡為 **2～4 個字**（如 `新增批次`、`匯出 Excel`、`顯示月薪`）或純 SVG Icon 按鈕（必備 `title` 與 `aria-label`），並移除重複標題語意的冗餘說明文字。
+- **常駐底層引擎與受保護禁區**：`🧭 Graphify 圖譜導航` + `🧰 Role-Scoped Skills 動態掛載` + `✂️ Ponytail 極簡守則` 為常駐引擎；嚴禁簡化 3D 空間幾何／財務計價／硬體 IoT FOV 校準與跨庫 API 契約。刪減 `> 15` 行、移除抽象層／檔案或指定 `/multi-agent-mode` 時強制執行 `python3 scripts/multi_model_gate.py review --prompt "..." --git-diff --output temp_multi_review.json`（Plan／子代理優先 → 官方直連 → OpenRouter；Qwen 固定 `qwen-max`）。
+- **確定性門禁與技能路由**：
+  - 改碼後強制執行確定性檢查：`python3 scripts/rule_lint.py --git-diff`（自動攔截 UI Emoji、按鈕過長或缺 `aria-label`/`title`、`<input type="date" lang="en" />` 缺漏、`dangerouslySetInnerHTML`、`.skip`／空 `catch` 與 `TODO:`/`FIXME:`/`HACK:`/`XXX:` 藉口註解；僅允許 `// shortcut: <上限條件>, <何時該升級>`）。
+  - 前端 UI 遵循 `stageshow` × `impeccable` × `design-taste-frontend`（詳見 `.cursor/rules/react-typescript.mdc`）；精簡按鈕時**嚴禁刪除**不可逆風險警告、交易計價／稅額條件、合規聲明與專案 SEO/GEO 訊號。
+  - 檢索最佳技能：`python3 scripts/skill_router.py route "<任務描述>"` | 預覽技能矩陣：`python3 scripts/multi_model_gate.py plan-skills --prompt "<任務描述>"`
 - **收尾誠實揭露與極簡防重複回條（Final-Turn Compact Lean-Triad Receipt）**：
   - **🚫 嚴禁輸出回條之場景（防 Token 浪費）**：等待背景任務（`run_command` / `Shell` / subagent）完成的中繼進度回覆、純合併／部署狀態回報、澄清提問、純問答或閒聊，或**同一任務無新程式碼變更時，絕對禁止附上執行回條**。
   - **🚫 嚴禁正文與回條內容重複（Anti-Duplication Rule）**：回條每欄僅限填寫**關鍵字、路徑、行數或指令結果**（每欄 `<= 60` 字），**嚴禁把正文寫過的結論、PR 編號或背景敘述重抄進回條**；反之，已寫入回條的測試通過數、行數統計與略過邊界，正文**不再重複條列**。
@@ -290,41 +319,74 @@ CANONICAL_AGENTS_SSOT_BLOCK = """<!-- BEGIN_LEAN_TRIAD_SSOT -->
     - 🧰 **Skills**：`<Skills>`
     - 🧭 **Graphify**：`<節點 / update>`
     - ✂️ **Ponytail**：`+<新增> / -<刪除> 行 (shortcut: <無或註記>)`
-    - ⚖️ **Gate & QA**：`<會審門禁與測試通過數>`
+    - ⚖️ **Gate & QA**：`<multi_model_gate 真實 verdict/score/req_ids（若未跑腳本強制填「未執行 multi_model_gate」，嚴禁單一模型自評冒充）＋ 測試通過數>`
     - ⚠️ **邊界**：`<略過項目與風險>`
     ```
 <!-- END_LEAN_TRIAD_SSOT -->"""
 
 
-def sync_ssot_rules_from_gemini_md() -> bool:
+def sync_ssot_rules_from_gemini_md(dry_run: bool = False) -> dict:
     """
-    確保本機單一真相來源 ~/.gemini/GEMINI.md、~/.gemini/cursor-rules/engineering-core.mdc 與
-    ~/.cursor/rules/engineering-core.mdc 的回條與防重複規範完全一致，消除覆蓋回退。
+    確保本機單一真相來源 ~/.gemini/cursor-rules/*.mdc 與 ~/.cursor/rules/*.mdc 完全一致，
+    避免覆蓋回退。支援 dry_run 預覽不寫入磁碟。
     """
     gemini_rules_dir = HOME / ".gemini" / "cursor-rules"
-    gemini_rules_dir.mkdir(parents=True, exist_ok=True)
-    GLOBAL_CURSOR_RULES_DIR.mkdir(parents=True, exist_ok=True)
+    if not dry_run:
+        gemini_rules_dir.mkdir(parents=True, exist_ok=True)
+        GLOBAL_CURSOR_RULES_DIR.mkdir(parents=True, exist_ok=True)
 
     src_mdc = gemini_rules_dir / "engineering-core.mdc"
     dst_mdc = GLOBAL_CURSOR_RULES_DIR / "engineering-core.mdc"
 
-    if dst_mdc.is_file() and (not src_mdc.is_file() or "Anti-Duplication Rule" not in src_mdc.read_text(encoding="utf-8")):
-        if "Anti-Duplication Rule" in dst_mdc.read_text(encoding="utf-8"):
-            shutil.copy2(dst_mdc, src_mdc)
+    if not src_mdc.is_file() and dst_mdc.is_file() and not dry_run:
+        shutil.copy2(dst_mdc, src_mdc)
 
-    for mdc in gemini_rules_dir.glob("*.mdc"):
-        shutil.copy2(mdc, GLOBAL_CURSOR_RULES_DIR / mdc.name)
-    return True
+    planned_actions: list[dict[str, str]] = []
+    if gemini_rules_dir.is_dir():
+        for mdc in sorted(gemini_rules_dir.glob("*.mdc"), key=lambda p: p.name):
+            target = GLOBAL_CURSOR_RULES_DIR / mdc.name
+            if not target.is_file():
+                action = "create"
+            elif target.read_bytes() != mdc.read_bytes():
+                action = "update"
+            else:
+                action = "unchanged"
+            planned_actions.append({"file": mdc.name, "action": action})
+            if not dry_run and action != "unchanged":
+                shutil.copy2(mdc, target)
+
+    return {
+        "dry_run": dry_run,
+        "source_dir": str(gemini_rules_dir),
+        "target_dir": str(GLOBAL_CURSOR_RULES_DIR),
+        "total_rules": len(planned_actions),
+        "changed_count": sum(1 for item in planned_actions if item["action"] != "unchanged"),
+        "planned_actions": planned_actions,
+    }
 
 
-def ensure_agents_md_ssot(repo: Path) -> bool:
+def _iter_effective_global_rules() -> list[Path]:
+    """收集欲同步至業務倉庫的 .mdc 來源檔（優先以 ~/.gemini/cursor-rules 為準，補充 ~/.cursor/rules 其他檔案）。"""
+    merged: dict[str, Path] = {}
+    if GLOBAL_CURSOR_RULES_DIR.is_dir():
+        for mdc in GLOBAL_CURSOR_RULES_DIR.glob("*.mdc"):
+            merged[mdc.name] = mdc
+    gemini_rules_dir = HOME / ".gemini" / "cursor-rules"
+    if gemini_rules_dir.is_dir():
+        for mdc in gemini_rules_dir.glob("*.mdc"):
+            merged[mdc.name] = mdc
+    return [merged[k] for k in sorted(merged.keys())]
+
+
+def ensure_agents_md_ssot(repo: Path, dry_run: bool = False) -> bool:
     """
     將 Lean-Triad 單一真相來源區塊自動注入專案根目錄 AGENTS.md（Cursor Cloud Agents 唯一必讀系統提示檔）。
     若原本已有舊版 `## Lean-Triad 執行回條` 或 `## Cursor Cloud & Agent Skills (Lean-Triad)` 則原位替換為受管區塊。
     """
     agents_md = repo / "AGENTS.md"
     if not agents_md.is_file():
-        agents_md.write_text(f"# AGENTS.md — {repo.name}\n\n{CANONICAL_AGENTS_SSOT_BLOCK}\n", encoding="utf-8")
+        if not dry_run:
+            agents_md.write_text(f"# AGENTS.md — {repo.name}\n\n{CANONICAL_AGENTS_SSOT_BLOCK}\n", encoding="utf-8")
         return True
 
     original = agents_md.read_text(encoding="utf-8")
@@ -364,72 +426,115 @@ def ensure_agents_md_ssot(repo: Path) -> bool:
                 updated = updated.rstrip() + f"\n\n{CANONICAL_AGENTS_SSOT_BLOCK}\n"
 
     if updated != original:
-        agents_md.write_text(updated, encoding="utf-8")
+        if not dry_run:
+            agents_md.write_text(updated, encoding="utf-8")
         return True
     return False
 
 
-def sync_repo(repo: Path, global_skills: list[Path], rules_only: bool = False) -> dict:
+def sync_repo(repo: Path, global_skills: list[Path], rules_only: bool = False, dry_run: bool = False) -> dict:
     family = get_repo_family(repo.name)
-    excluded_skills = STOREASY_ONLY_SKILLS if family == "us3c" else US3C_ONLY_SKILLS
-    excluded_rules = STOREASY_ONLY_RULES if family == "us3c" else US3C_ONLY_RULES
+    if family == "shared":
+        excluded_skills: set[str] = set()
+        excluded_rules: set[str] = set()
+    elif family == "generic":
+        excluded_skills = STOREASY_ONLY_SKILLS | US3C_ONLY_SKILLS
+        excluded_rules = STOREASY_ONLY_RULES | US3C_ONLY_RULES
+    else:
+        excluded_skills = STOREASY_ONLY_SKILLS if family == "us3c" else US3C_ONLY_SKILLS
+        excluded_rules = STOREASY_ONLY_RULES if family == "us3c" else US3C_ONLY_RULES
     uses_git_symlinks = has_git_symlink_architecture(repo)
+    planned_actions: list[str] = []
 
     if not uses_git_symlinks:
         for rel in (".agents", ".cursor", ".cursor/skills", ".cursor/rules", ".cursor/commands", ".agents/skills"):
             p = repo / rel
             try:
                 if (p.is_file() or p.is_symlink()) and not p.is_dir():
-                    p.unlink(missing_ok=True)
+                    planned_actions.append(f"cleanup:{rel}")
+                    if not dry_run:
+                        p.unlink(missing_ok=True)
             except OSError:
+                # Ignore stat/unlink errors on broken paths during symlink cleanup
                 pass
 
-    gitignore_fixed = ensure_gitignore_allows_cloud_skills(repo)
+    gitignore_fixed = ensure_gitignore_allows_cloud_skills(repo, dry_run=dry_run)
+    if gitignore_fixed:
+        planned_actions.append("update:.gitignore")
 
     # 1. 依產業家族同步 .cursor/rules/*.mdc，並清理另一產業之專屬規則檔（保留專案自有規則如 usd-shop.mdc）
     rules_dst = repo / ".cursor" / "rules"
-    rules_dst.mkdir(parents=True, exist_ok=True)
+    if not dry_run:
+        rules_dst.mkdir(parents=True, exist_ok=True)
     for old_rule in excluded_rules:
-        (rules_dst / old_rule).unlink(missing_ok=True)
+        old_path = rules_dst / old_rule
+        if old_path.exists() or old_path.is_symlink():
+            planned_actions.append(f"delete:.cursor/rules/{old_rule}")
+            if not dry_run:
+                old_path.unlink(missing_ok=True)
 
     rules_synced = 0
-    if GLOBAL_CURSOR_RULES_DIR.is_dir():
-        for mdc in GLOBAL_CURSOR_RULES_DIR.glob("*.mdc"):
-            if mdc.name in excluded_rules:
-                continue
-            shutil.copy2(mdc, rules_dst / mdc.name)
-            rules_synced += 1
+    for mdc in _iter_effective_global_rules():
+        if mdc.name in excluded_rules:
+            continue
+        dst_rule = rules_dst / mdc.name
+        needs_write = (not dst_rule.is_file()) or (dst_rule.read_bytes() != mdc.read_bytes())
+        if needs_write:
+            action_kind = "update" if dst_rule.is_file() else "create"
+            planned_actions.append(f"{action_kind}:.cursor/rules/{mdc.name}")
+            if not dry_run:
+                shutil.copy2(mdc, dst_rule)
+        rules_synced += 1
 
-    # 2. 同步跨平台腳本至 scripts/
+    # 2. 同步跨平台腳本至 scripts/（納入 rule_lint.py）
     scripts_dst = repo / "scripts"
-    scripts_dst.mkdir(parents=True, exist_ok=True)
+    if not dry_run:
+        scripts_dst.mkdir(parents=True, exist_ok=True)
     for fname in (
         "skill_router.py",
         "multi_model_gate.py",
+        "rule_lint.py",
         "skill_eval_dataset.json",
         "bootstrap_cursor_cloud.py",
         "sync_skills_to_cloud_repos.py",
     ):
         src_f = GLOBAL_SCRIPTS_DIR / fname
+        dst_f = scripts_dst / fname
         if src_f.is_file():
             try:
-                if os.path.realpath(src_f) != os.path.realpath(scripts_dst / fname):
-                    shutil.copy2(src_f, scripts_dst / fname)
+                if os.path.realpath(src_f) != os.path.realpath(dst_f):
+                    needs_copy = (not dst_f.is_file()) or (dst_f.read_bytes() != src_f.read_bytes())
+                    if needs_copy:
+                        action_kind = "update" if dst_f.is_file() else "create"
+                        planned_actions.append(f"{action_kind}:scripts/{fname}")
+                        if not dry_run:
+                            shutil.copy2(src_f, dst_f)
             except OSError:
+                # Ignore path resolution or permission error when syncing helper scripts
                 pass
 
     # 1b. 自動同步專案根目錄 AGENTS.md 的受管單一真相來源區塊 (SSOT)
-    agents_md_updated = ensure_agents_md_ssot(repo)
+    agents_existed = (repo / "AGENTS.md").is_file()
+    agents_md_updated = ensure_agents_md_ssot(repo, dry_run=dry_run)
+    if agents_md_updated:
+        planned_actions.append(f"{'update' if agents_existed else 'create'}:AGENTS.md")
 
     # 3. 同步 .cursor/environment.json
-    ensure_cursor_environment_json(repo)
+    env_existed = (repo / ".cursor" / "environment.json").is_file()
+    env_json_updated = ensure_cursor_environment_json(repo, dry_run=dry_run)
+    if env_json_updated:
+        planned_actions.append(f"{'update' if env_existed else 'create'}:.cursor/environment.json")
 
     if rules_only:
         return {
             "repo": repo.name,
             "family": family,
+            "dry_run": dry_run,
             "rules_synced": rules_synced,
             "agents_md_ssot_updated": agents_md_updated,
+            "env_json_updated": env_json_updated,
+            "gitignore_fixed": gitignore_fixed,
+            "planned_actions": planned_actions,
             "mode": "rules_only",
         }
 
@@ -444,33 +549,45 @@ def sync_repo(repo: Path, global_skills: list[Path], rules_only: bool = False) -
 
     if uses_git_symlinks:
         primary_skills_dst = repo / ".agent" / "skills"
-        primary_skills_dst.mkdir(parents=True, exist_ok=True)
-        for child in list(primary_skills_dst.iterdir()):
-            if (child.name in excluded_skills or child.name.startswith("source-command-")) and child.is_dir():
-                shutil.rmtree(child, ignore_errors=True)
+        if not dry_run:
+            primary_skills_dst.mkdir(parents=True, exist_ok=True)
+        if primary_skills_dst.is_dir():
+            for child in list(primary_skills_dst.iterdir()):
+                if (child.name in excluded_skills or child.name.startswith("source-command-")) and child.is_dir():
+                    planned_actions.append(f"delete:.agent/skills/{child.name}")
+                    if not dry_run:
+                        shutil.rmtree(child, ignore_errors=True)
         skill_count = 0
+        skill_files_changed = 0
         for s_dir in family_skills:
             fm_name = read_frontmatter_name(s_dir / "SKILL.md")
-            # 移除同 frontmatter name 但不同資料夾名稱的重複舊目錄
             if s_dir.name != fm_name and (primary_skills_dst / s_dir.name).is_dir() and (primary_skills_dst / fm_name).is_dir():
-                shutil.rmtree(primary_skills_dst / s_dir.name, ignore_errors=True)
+                planned_actions.append(f"delete:.agent/skills/{s_dir.name}")
+                if not dry_run:
+                    shutil.rmtree(primary_skills_dst / s_dir.name, ignore_errors=True)
             target_dir_name = s_dir.name if (primary_skills_dst / s_dir.name).is_dir() else fm_name
-            copy_clean_skill_dir(s_dir, primary_skills_dst / target_dir_name)
+            skill_files_changed += copy_clean_skill_dir(s_dir, primary_skills_dst / target_dir_name, dry_run=dry_run)
             skill_count += 1
+        if skill_files_changed:
+            planned_actions.append(f"sync_skill_files:.agent/skills ({skill_files_changed} files)")
         return {
             "repo": repo.name,
             "family": family,
+            "dry_run": dry_run,
             "architecture": "git-symlink-single-source",
             "rules_synced": rules_synced,
             "commands_synced": 0,
             "skills_synced": skill_count,
+            "agents_md_ssot_updated": agents_md_updated,
             "gitignore_fixed": gitignore_fixed,
+            "planned_actions": planned_actions,
         }
 
     agents_skills_dst = repo / ".agents" / "skills"
     cursor_skills_dst = repo / ".cursor" / "skills"
-    agents_skills_dst.mkdir(parents=True, exist_ok=True)
-    cursor_skills_dst.mkdir(parents=True, exist_ok=True)
+    if not dry_run:
+        agents_skills_dst.mkdir(parents=True, exist_ok=True)
+        cursor_skills_dst.mkdir(parents=True, exist_ok=True)
 
     same_target = False
     try:
@@ -478,40 +595,44 @@ def sync_repo(repo: Path, global_skills: list[Path], rules_only: bool = False) -
     except OSError:
         same_target = False
 
-    # 不再寫入舊式 .agent/skills：Cursor 文件與 Antigravity 文件的共同標準是 .agents/skills，
-    # 同時寫兩份會讓 Antigravity（兩個目錄都讀）列出重複 skill。
     legacy_agent_skills = repo / ".agent" / "skills"
     has_legacy = False
 
-    # 僅移除「對立產業專屬技能」(excluded_skills) 與重複之 source-command-*，保留專案既有客製技能（如 seo-looping, openseo-*）
     cleanup_dirs = [agents_skills_dst]
     if not same_target:
         cleanup_dirs.append(cursor_skills_dst)
     if has_legacy:
         cleanup_dirs.append(legacy_agent_skills)
     for sub_dir in cleanup_dirs:
+        if not sub_dir.is_dir():
+            continue
         for child in list(sub_dir.iterdir()):
             if (child.name in excluded_skills or child.name.startswith("source-command-")) and child.is_dir():
-                shutil.rmtree(child, ignore_errors=True)
+                planned_actions.append(f"delete:{sub_dir.relative_to(repo).as_posix()}/{child.name}")
+                if not dry_run:
+                    shutil.rmtree(child, ignore_errors=True)
 
     skill_count = 0
+    skill_files_changed = 0
     for s_dir in family_skills:
         dir_name = s_dir.name
         fm_name = read_frontmatter_name(s_dir / "SKILL.md")
-        copy_clean_skill_dir(s_dir, agents_skills_dst / dir_name)
+        skill_files_changed += copy_clean_skill_dir(s_dir, agents_skills_dst / dir_name, dry_run=dry_run)
         if not same_target:
-            copy_clean_skill_dir(s_dir, cursor_skills_dst / fm_name)
+            skill_files_changed += copy_clean_skill_dir(s_dir, cursor_skills_dst / fm_name, dry_run=dry_run)
         if has_legacy:
-            copy_clean_skill_dir(s_dir, legacy_agent_skills / dir_name)
+            skill_files_changed += copy_clean_skill_dir(s_dir, legacy_agent_skills / dir_name, dry_run=dry_run)
         skill_count += 1
 
-    # 若 .agents/skills 內還有專案自有客製技能（如 seo-looping, openseo-*），同步鏡像一份到實體 .cursor/skills
-    if not same_target:
+    if not same_target and agents_skills_dst.is_dir():
         for existing_dir in agents_skills_dst.iterdir():
             if existing_dir.is_dir() and (existing_dir / "SKILL.md").is_file():
                 fm_name = read_frontmatter_name(existing_dir / "SKILL.md")
                 if fm_name not in excluded_skills and not (cursor_skills_dst / fm_name).exists():
-                    copy_clean_skill_dir(existing_dir, cursor_skills_dst / fm_name)
+                    skill_files_changed += copy_clean_skill_dir(existing_dir, cursor_skills_dst / fm_name, dry_run=dry_run)
+
+    if skill_files_changed:
+        planned_actions.append(f"sync_skill_files:.agents/.cursor/skills ({skill_files_changed} files)")
 
     # 5. 同步 .cursor/commands/*.md（讓 Cursor 輸入 `/` 直接跳出核心與產業專屬技能選單；保留既有 symlink 如 us3c-next）
     commands_dst = repo / ".cursor" / "commands"
@@ -523,30 +644,44 @@ def sync_repo(repo: Path, global_skills: list[Path], rules_only: bool = False) -
         is_cmd_link = False
 
     if not is_cmd_link:
-        commands_dst.mkdir(parents=True, exist_ok=True)
+        if not dry_run:
+            commands_dst.mkdir(parents=True, exist_ok=True)
         allowed_cmds = SHARED_SLASH_COMMAND_SKILLS | (
-            US3C_ONLY_SKILLS if family == "us3c" else STOREASY_ONLY_SKILLS
+            (STOREASY_ONLY_SKILLS | US3C_ONLY_SKILLS)
+            if family == "shared"
+            else (US3C_ONLY_SKILLS if family == "us3c" else STOREASY_ONLY_SKILLS)
         )
-        for old_cmd in list(commands_dst.glob("*.md")):
-            if old_cmd.stem in excluded_skills:
-                old_cmd.unlink(missing_ok=True)
+        if commands_dst.is_dir():
+            for old_cmd in list(commands_dst.glob("*.md")):
+                if old_cmd.stem in excluded_skills:
+                    planned_actions.append(f"delete:.cursor/commands/{old_cmd.name}")
+                    if not dry_run:
+                        old_cmd.unlink(missing_ok=True)
         for s_dir in family_skills:
             fm_name = read_frontmatter_name(s_dir / "SKILL.md")
             if fm_name in allowed_cmds or s_dir.name in allowed_cmds:
-                shutil.copy2(s_dir / "SKILL.md", commands_dst / f"{fm_name}.md")
+                src_cmd = s_dir / "SKILL.md"
+                dst_cmd = commands_dst / f"{fm_name}.md"
+                if (not dst_cmd.is_file()) or (dst_cmd.read_bytes() != src_cmd.read_bytes()):
+                    planned_actions.append(f"{'update' if dst_cmd.is_file() else 'create'}:.cursor/commands/{fm_name}.md")
+                    if not dry_run:
+                        shutil.copy2(src_cmd, dst_cmd)
                 commands_synced += 1
 
     return {
         "repo": repo.name,
         "family": family,
+        "dry_run": dry_run,
         "rules_synced": rules_synced,
         "commands_synced": commands_synced,
         "skills_synced": skill_count,
+        "agents_md_ssot_updated": agents_md_updated,
         "gitignore_fixed": gitignore_fixed,
+        "planned_actions": planned_actions,
     }
 
 
-def sync_local_cursor_user_dirs(global_skills: list[Path]) -> dict:
+def sync_local_cursor_user_dirs(global_skills: list[Path], dry_run: bool = False) -> dict:
     """
     1. 修復本機 Windows ~/.cursor/skills 的 NTFS Directory Junction 陷阱，轉為真實實體目錄。
        不再把 SKILL.md 複製成 ~/.cursor/commands/*.md（會與同名 skill 在「/」選單重複）；
@@ -554,32 +689,39 @@ def sync_local_cursor_user_dirs(global_skills: list[Path]) -> dict:
     2. 同步至 Cursor 跨機雲端 AgentStore (`LOCALAPPDATA/Cursor/AgentStores/cursor_agent_stores/u*/files/skills`)，
        讓同一 Cursor 帳號在 `DESKTOP-N1NJDUH` 與 `YangPC` 之間自動雲端同步 User Skills。
     """
-    GLOBAL_CURSOR_SKILLS_DIR.mkdir(parents=True, exist_ok=True)
-    GLOBAL_CURSOR_RULES_DIR.mkdir(parents=True, exist_ok=True)
-    for mdc in (HOME / ".gemini" / "cursor-rules").glob("*.mdc"):
-        shutil.copy2(mdc, GLOBAL_CURSOR_RULES_DIR / mdc.name)
+    if not dry_run:
+        GLOBAL_CURSOR_SKILLS_DIR.mkdir(parents=True, exist_ok=True)
+        GLOBAL_CURSOR_RULES_DIR.mkdir(parents=True, exist_ok=True)
+        for mdc in (HOME / ".gemini" / "cursor-rules").glob("*.mdc"):
+            shutil.copy2(mdc, GLOBAL_CURSOR_RULES_DIR / mdc.name)
 
     removed_junctions = 0
-    for item in list(GLOBAL_CURSOR_SKILLS_DIR.iterdir()):
-        try:
-            if item.is_junction():
-                os.rmdir(item)
-                removed_junctions += 1
-            elif item.is_symlink() or item.is_file():
-                item.unlink(missing_ok=True)
-                removed_junctions += 1
-        except OSError:
-            pass
+    if GLOBAL_CURSOR_SKILLS_DIR.is_dir():
+        for item in list(GLOBAL_CURSOR_SKILLS_DIR.iterdir()):
+            try:
+                if item.is_junction():
+                    if not dry_run:
+                        os.rmdir(item)
+                    removed_junctions += 1
+                elif item.is_symlink() or item.is_file():
+                    if not dry_run:
+                        item.unlink(missing_ok=True)
+                    removed_junctions += 1
+            except OSError:
+                # Ignore permission or filesystem error on junction/symlink inspection
+                pass
 
     valid_names: set[str] = set()
     for d in global_skills:
         fm = read_frontmatter_name(d / "SKILL.md")
         valid_names.add(fm)
-        copy_clean_skill_dir(d, GLOBAL_CURSOR_SKILLS_DIR / fm)
+        copy_clean_skill_dir(d, GLOBAL_CURSOR_SKILLS_DIR / fm, dry_run=dry_run)
 
-    for child in list(GLOBAL_CURSOR_SKILLS_DIR.iterdir()):
-        if child.name not in valid_names and child.is_dir():
-            shutil.rmtree(child, ignore_errors=True)
+    if GLOBAL_CURSOR_SKILLS_DIR.is_dir():
+        for child in list(GLOBAL_CURSOR_SKILLS_DIR.iterdir()):
+            if child.name not in valid_names and child.is_dir():
+                if not dry_run:
+                    shutil.rmtree(child, ignore_errors=True)
 
     cmd_pruned = 0
     if GLOBAL_CURSOR_COMMANDS_DIR.is_dir():
@@ -588,9 +730,11 @@ def sync_local_cursor_user_dirs(global_skills: list[Path]) -> dict:
             twin = GLOBAL_CURSOR_COMMANDS_DIR / f"{fm}.md"
             try:
                 if twin.is_file() and twin.read_bytes() == (d / "SKILL.md").read_bytes():
-                    twin.unlink()
+                    if not dry_run:
+                        twin.unlink()
                     cmd_pruned += 1
             except OSError:
+                # Ignore read/unlink error while pruning duplicate command copies
                 pass
 
     # 同步至 Cursor AgentStores (u*/files/skills) 實現跨電腦 User Skills 雲端同步
@@ -602,13 +746,15 @@ def sync_local_cursor_user_dirs(global_skills: list[Path]) -> dict:
             if not u_dir.is_dir():
                 continue
             store_skills_dir = u_dir / "files" / "skills"
-            store_skills_dir.mkdir(parents=True, exist_ok=True)
+            if not dry_run:
+                store_skills_dir.mkdir(parents=True, exist_ok=True)
             for d in global_skills:
                 fm = read_frontmatter_name(d / "SKILL.md")
-                copy_clean_skill_dir(d, store_skills_dir / fm)
+                copy_clean_skill_dir(d, store_skills_dir / fm, dry_run=dry_run)
                 agent_store_synced += 1
 
     return {
+        "dry_run": dry_run,
         "removed_junctions": removed_junctions,
         "user_cursor_skills": len(valid_names),
         "cursor_command_copies_pruned": cmd_pruned,
@@ -620,7 +766,24 @@ def main() -> None:
     parser = argparse.ArgumentParser(description="Sync industry-scoped rules & skills to repos for Cursor Cloud Agents")
     parser.add_argument("--repo", type=str, default="all", help="Repo name, 'storeasy', 'us3c', or 'all'")
     parser.add_argument("--rules-only", action="store_true", help="Fast mode: sync only .cursor/rules, AGENTS.md SSOT block, and scripts/")
+    parser.add_argument("--local-cursor-only", action="store_true", help="Only sync ~/.gemini/cursor-rules/*.mdc to ~/.cursor/rules/*.mdc without touching external repos")
+    parser.add_argument("--dry-run", action="store_true", help="Preview planned sync actions without writing or deleting any files on disk")
     args = parser.parse_args()
+
+    local_rules_sync = sync_ssot_rules_from_gemini_md(dry_run=args.dry_run)
+    if args.local_cursor_only:
+        print(
+            json.dumps(
+                {
+                    "mode": "local_cursor_only",
+                    "dry_run": bool(args.dry_run),
+                    "local_cursor_rules_sync": local_rules_sync,
+                },
+                ensure_ascii=False,
+                indent=2,
+            )
+        )
+        return
 
     if args.repo == "all":
         target_names = ALL_MANAGED_REPOS
@@ -628,6 +791,8 @@ def main() -> None:
         target_names = STOREASY_FAMILY_REPOS
     elif args.repo == "us3c":
         target_names = US3C_FAMILY_REPOS
+    elif args.repo == "generic":
+        target_names = GENERIC_FAMILY_REPOS
     else:
         target_names = [args.repo]
     repos = [GITHUB_ROOT / name for name in target_names if (GITHUB_ROOT / name).is_dir()]
@@ -641,17 +806,23 @@ def main() -> None:
         key=lambda x: x.name,
     )
 
-    sync_ssot_rules_from_gemini_md()
-    user_cursor_sync = {"mode": "rules_only"} if args.rules_only else sync_local_cursor_user_dirs(global_skills)
+    user_cursor_sync = (
+        {"mode": "rules_only", "dry_run": bool(args.dry_run)}
+        if args.rules_only
+        else sync_local_cursor_user_dirs(global_skills, dry_run=args.dry_run)
+    )
 
     results = []
     for repo in repos:
-        results.append(sync_repo(repo, global_skills, rules_only=args.rules_only))
+        results.append(sync_repo(repo, global_skills, rules_only=args.rules_only, dry_run=args.dry_run))
 
     print(
         json.dumps(
             {
+                "dry_run": bool(args.dry_run),
+                "rules_only": bool(args.rules_only),
                 "total_master_skills": len(global_skills),
+                "local_cursor_rules_sync": local_rules_sync,
                 "user_cursor_sync": user_cursor_sync,
                 "storeasy_only_count": len(STOREASY_ONLY_SKILLS),
                 "us3c_only_count": len(US3C_ONLY_SKILLS) - 1,  # jev-typesafe & jev alias

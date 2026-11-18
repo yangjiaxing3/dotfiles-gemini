@@ -6,28 +6,15 @@ alwaysApply: false
 
 # 測試規範
 
-## TDD 與自動化迴圈
+## TDD、自動化迴圈與防作弊
 
-- 遵循 RED → GREEN → REFACTOR
-- 撰寫測試與實作後，必須主動用 `Shell` 執行 `npm test` 或 `pytest`，自行讀取錯誤並修復
-- 最多自我循環 5 次；超過上限或連續同樣錯誤 2 次必須中止
-- 嚴禁為了通過測試而刪除斷言、弱化條件或使用 `@skip`
+- 遵循 `RED → GREEN → REFACTOR`；改碼與寫測試後必主動用 `Shell` 執行 `npm test`／`pytest` 與 `python scripts/rule_lint.py --git-diff`（無 `scripts/` 用 `~/.gemini/scripts/rule_lint.py --git-diff`）並自行讀日誌修復
+- **循環上限**：最多自我循環 5 次；達上限或連續同錯 2 次必須立即中止
+- **防作弊（硬攔截）**：嚴禁為過測刪除斷言、弱化條件、`@skip`／`.skip` 或空 `catch`（由 `safety-guard.ps1` 與 `rule_lint.py` 攔截）
 
-## 測試結構
+## 結構、命名、Mock 與覆蓋率
 
-- AAA：Arrange → Act → Assert
-- 一個測試只驗證一個行為
-- 測試描述用自然語言，清楚表達「什麼情境下、預期什麼結果」
-
-## 命名
-
-- 前端：`*.test.tsx` / `*.test.ts`（與元件同名）
-- 後端：`test_*.py`（與模組同名）
-- 函式：`test_<行為>_<情境>_<預期結果>`
-
-## Mock 與覆蓋率
-
-- 外部依賴一律 Mock
-- 共用 Mock 抽離為 fixture / factory
-- 避免測試互相依賴或共享狀態
-- 核心業務邏輯覆蓋率應 ≥ 80%；邊界條件與錯誤路徑必須有測試
+- 採 `AAA`（Arrange → Act → Assert），一個測試僅驗證單一行為，描述清楚情境與預期
+- 命名：前端 `*.test.tsx` / `*.test.ts`；後端 `test_*.py`；函式 `test_<行為>_<情境>_<預期結果>`
+- 外部依賴一律 Mock（共用 Mock 抽離為 fixture / factory），測試彼此隔離
+- 核心業務邏輯覆蓋率應 `>= 80%`，邊界條件與錯誤路徑必有對應測試

@@ -71,11 +71,14 @@ GATE_MARK_END = "<!-- END dotfiles-gemini cloud-gate -->"
 
 
 def install_gate(gate: Path, skill_dst: Path) -> str:
-    """Put the latest multi_model_gate.py inside the synced multi-agent-mode skill (.agents/skills only) and
-    append a short pointer to the target's SKILL.md so cloud agents run it instead of a stale repo copy."""
+    """Put the latest multi_model_gate.py and rule_lint.py inside the synced multi-agent-mode skill (.agents/skills only)
+    and append a short pointer to the target's SKILL.md so cloud agents run them instead of stale repo copies."""
     sdir = skill_dst / "scripts"
     sdir.mkdir(parents=True, exist_ok=True)
     shutil.copy2(gate, sdir / "multi_model_gate.py")
+    rule_lint = gate.parent / "rule_lint.py"
+    if rule_lint.is_file():
+        shutil.copy2(rule_lint, sdir / "rule_lint.py")
     digest = hashlib.sha256(gate.read_bytes()).hexdigest()[:12]
     md = skill_dst / "SKILL.md"
     text = md.read_text(encoding="utf-8")
@@ -83,8 +86,9 @@ def install_gate(gate: Path, skill_dst: Path) -> str:
     block = (
         f"\n{GATE_MARK_BEGIN}\n"
         "## ☁️ 雲端 / Linux 執行路徑（CI 自動附加）\n\n"
-        "- 雲端 Agent（Cursor Cloud、Linux、無 `agy` / `grok` 訂閱登入）一律執行本 skill 內的全域最新版會審腳本，"
-        "不要用 repo 根目錄 `scripts/multi_model_gate.py`（可能是舊版），也不要用 `C:\\Users\\...` 路徑：\n\n"
+        "- 雲端 Agent（Cursor Cloud、Linux、無 `agy` / `grok` 訂閱登入）一律執行本 skill 內的全域最新版會審與確定性檢查腳本，"
+        "不要用 repo 根目錄舊版腳本，也不要用 `C:\\Users\\...` 路徑：\n\n"
+        "  `python .agents/skills/multi-agent-mode/scripts/rule_lint.py --git-diff`\n"
         "  `python .agents/skills/multi-agent-mode/scripts/multi_model_gate.py review --prompt \"...\" --git-diff --output temp_multi_review.json`\n\n"
         "- 通道只走環境變數中的 API key；Qwen 的 Token Plan / Gemini 直連逾時已放寬（Qwen ≥210s、Gemini ≥180s）。\n"
         f"- 腳本版本指紋：sha256:{digest}（來自 dotfiles-gemini `scripts/multi_model_gate.py`）。\n"

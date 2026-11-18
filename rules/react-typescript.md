@@ -1,43 +1,47 @@
 ---
-description: "React + TypeScript 前端開發規範，含元件設計、Hooks、效能及前端安全"
+description: "React + TypeScript 前端開發規範，含元件設計、Hooks、效能、UI 設計系統、4 層次動畫與前端安全"
 globs: ["**/*.tsx", "**/*.ts", "**/*.jsx"]
 ---
 
 # React + TypeScript 規範
 
-## 元件設計
+## 元件設計與互動
 
-- 僅用函式元件，禁止 class 元件
-- 單一元件單一職責，展示與業務邏輯分離
-- 可複用邏輯抽離為自訂 Hook（`use` 前綴）
-- Props 必須定義 TypeScript 介面，用解構接收
+- 僅用函式元件，禁止 class 元件；單一職責，展示與邏輯分離
+- 可複用邏輯抽離為自訂 Hook（`use` 前綴）；Props 必定義 TS 介面並解構接收
+- 3D／Canvas 拖曳必記住初始 `dragOffset` 實現 1:1 跟手；增刪改設備透過 `postMessage`／狀態原地更新，禁整頁重載，樂觀更新失敗須回滾
 
-## Hooks 規範
+## Hooks 與效能
 
-- 只在函式元件或自訂 Hook 頂層呼叫
-- 禁止在條件 / 迴圈中呼叫
-- 一個 Hook 只處理一種職責
+- 只在函式元件或自訂 Hook 頂層呼叫，禁止在條件／迴圈中呼叫；一 Hook 一職責
+- 合理使用 `useMemo` / `useCallback`；列表渲染必附穩定 `key`，大列表用虛擬捲動，路由與元件支援懶載入
 
-## 效能要求
+## UI 設計系統與極簡按鈕鐵律 (`stageshow` × `impeccable` × `design-taste-frontend`)
 
-- 合理使用 `useMemo` / `useCallback`，避免不必要的重渲染
-- 列表渲染必須提供穩定 `key`
-- 大資料列表使用虛擬捲動
-- 路由與元件支援懶載入
+- **三位一體優先序**：互動原件與動態轉場（`Collapse`, `Roll`, `Swap`, `Count`, `States`）優先用 `stageshow`，結合 `impeccable`（`Operate` 高密度工作台與 `/distill` 去蕪存菁，拒用裝飾性卡片與假數據）與 `design-taste-frontend`。
+- **嚴禁 UI Emoji（`rule_lint.py` 硬攔截）**：標題、KPI 卡、徽章、按鈕、表格、狀態列、空狀態與提示禁 Emoji，改用 [`pulsoicon-react`](https://github.com/CityPulso/PulsoIcon.git)（`PulsoIcon`）、`lucide-react` 或乾淨 SVG（`w-3.5 h-3.5` / `w-4 h-4`, `strokeWidth={1.75~2}`）。
+- **按鈕限 2～4 字或純 Icon（`rule_lint.py` 硬攔截）**：操作按鈕精簡為 2～4 字動賓結構（如 `新增批次`、`產生明細`、`匯出 Excel`、`顯示月薪`、`儲存資料`）或附 `title` 與 `aria-label` 之純 SVG Icon 按鈕；移除重複標題語意的冗餘說明與明顯慣例教學句。
+- **【Protected Invariants 嚴禁誤刪】**：減字時絕對禁止刪除不可逆／高風險操作警告（如「刪除後無法復原」）、交易前提／計價／稅額條件、法律合規聲明與專案明訂之 SEO／GEO 核心訊號。
 
-## 前端安全
+## B2B 網站與高密度工作台 4 層次動畫融合守則
 
-- 禁止 `dangerouslySetInnerHTML`
-- 防範 XSS / CSRF，不在前端儲存敏感資訊
-- Token 推薦使用 HttpOnly Cookie
+- **層次 1（頂部導覽列、子分頁 `SegmentedTabs`、2～4 字操作按鈕）**：預設 `autoAnimated`（懸停／聚焦觸發），靜止維持 `24×24` 乾淨線條。
+- **層次 2（Bento 工序卡、模組入口卡、可點擊列表列 `StageshowRow`）**：外層容器加 `data-icon-trigger=""`，滑過整卡任意角落即聯動圖示微動畫。
+- **層次 3（按鈕文字／圖示切換、背景同步、儲存成功、異常警示徽章）**：包裹 `StatusStates`（鎖定寬度 0px 防抖動）或 `autoAnimated={false} play={isSyncing}` 由系統真實狀態驅動。
+- **層次 4（高密度資料表百列台帳內部列、金額數字、法條／序號）**：不放重複裝飾圖示或設 `animated={false}`，確保對帳零干擾。
 
-## 文件註解
+## 前端安全與確定性門禁
 
-- 使用 JSDoc 格式撰寫函式註解
+- 禁 `dangerouslySetInnerHTML`；防範 XSS / CSRF，不在前端存敏感資訊，Token 推薦 HttpOnly Cookie
+- 改碼後必跑 `python scripts/rule_lint.py --git-diff`（專案無 `scripts/` 則用 `python ~/.gemini/scripts/rule_lint.py --git-diff`）驗證 Emoji、按鈕字數與 A11y、`<input type="date" lang="en" />` 與 `dangerouslySetInnerHTML`
 
 ## 現代原生平台與無障礙（Modern Web Guidance）
 
-- 彈窗與覆蓋層優先採用原生 `<dialog>` + `showModal()` 與 `overscroll-behavior: contain`，禁止手寫 `fixed inset-0` 遮罩或竄改 `document.body.style.overflow`
+- 彈窗與覆蓋層優先用原生 `<dialog>` + `showModal()` 與 `overscroll-behavior: contain`，禁手寫 `fixed inset-0` 遮罩或竄改 `document.body.style.overflow`
 - 自訂 `Enter` 鍵監聽第一行必檢 `if (e.nativeEvent.isComposing || e.keyCode === 229) return;`（繁中 IME 防誤送）；日期欄位強制 `<input type="date" lang="en" />`
 - 橫向捲動表格補 `tabIndex={0} role="region" aria-label`，捲軸採標準 `scrollbar-width` / `scrollbar-color`
-- 嚴禁對地址、效期與交易條件使用單行 `truncate` 截斷
+- 嚴禁對地址、效期、交易條件與關鍵中文資訊使用單行 `truncate` 截斷
+
+## 註解規範
+
+- 函式對外 API 採 JSDoc；無必要不寫行內註解，嚴禁 `TODO:`／`FIXME:`／`HACK:` 逃生門註解（僅容許格式合規的 `// shortcut: <上限條件>, <何時該升級>`）

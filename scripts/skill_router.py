@@ -76,6 +76,10 @@ US3C_REPO_NAMES = {
     "yangbiz",
 }
 
+SHARED_REPO_NAMES = {
+    "yolomono",
+}
+
 STOREASY_ONLY_SKILLS = {
     "storeasy-mini-warehouse-viz",
     "storeasy-channel-operations",
@@ -111,6 +115,8 @@ US3C_ONLY_SKILLS = {
 def detect_workspace_family(workspace_root: Path | None = None) -> str:
     root = workspace_root or WORKSPACE_ROOT
     name_low = root.name.lower()
+    if name_low in SHARED_REPO_NAMES:
+        return "shared"
     if (
         name_low in US3C_REPO_NAMES
         or "us3c" in name_low
@@ -330,7 +336,11 @@ def load_active_skills(
     seen_names: set[str] = set()
     skills: list[dict[str, Any]] = []
     family = detect_workspace_family(WORKSPACE_ROOT)
-    excluded = STOREASY_ONLY_SKILLS if family == "us3c" else US3C_ONLY_SKILLS
+    excluded = (
+        set()
+        if family == "shared"
+        else (STOREASY_ONLY_SKILLS if family == "us3c" else US3C_ONLY_SKILLS)
+    )
     for layer_name, root in (roots if roots is not None else SKILL_ROOTS):
         if not root.exists():
             continue

@@ -132,6 +132,7 @@ def _parse_agy_json_output(stdout: str) -> dict[str, Any]:
         obj = json.loads(txt)
         return obj if isinstance(obj, dict) else {}
     except json.JSONDecodeError:
+        # Fall back to reverse line scan when stdout contains non-JSON preamble text
         pass
     for line in reversed(txt.splitlines()):
         stripped = line.strip()
@@ -313,6 +314,7 @@ def call_grok_x(
             try:
                 parsed = json.loads(cleaned)
             except Exception:
+                # Keep parsed as None when CLI output is free-form text instead of JSON
                 pass
             return {
                 "status": "ok",
@@ -363,6 +365,7 @@ def call_grok_x(
         try:
             parsed = json.loads(cleaned)
         except Exception:
+            # Keep parsed as None when xAI response content is non-JSON text
             pass
         return {
             "status": "ok",
@@ -1099,6 +1102,7 @@ def _extract_skill_snippet(skill_item: dict[str, Any]) -> str:
                 bullets = [ln.strip() for ln in m.group(1).splitlines() if ln.strip().startswith(("-", "*", "1.", "2."))]
                 gotcha_summary = " | 避坑: " + "; ".join(bullets[:2])[:140]
     except Exception:
+        # Fall back to description-only snippet if SKILL.md cannot be parsed
         pass
     return f"- `{skill_item['name']}`: {desc[:120]}{gotcha_summary}"
 
@@ -1149,6 +1153,7 @@ def plan_role_skill_matrix(prompt: str) -> dict[str, Any]:
             router = SkillRouter(active_skills)
             routed_top = [r["name"] for r in router.route(prompt, top_k=4)]
         except Exception:
+            # Fall back to static role-task skill bindings if dynamic SkillRouter fails
             pass
 
     ws_ctx = _load_workspace_context_snippets()
@@ -1629,6 +1634,52 @@ def call_model(ep: dict[str, Any], prompt: str, plan: dict[str, Any] | None = No
     }
 
 
+def _run_deterministic_rule_lint(
+    diff_out: str,
+    repo_root: Path | None = None,
+    skip: bool = False,
+) -> dict[str, Any]:
+    """動態載入同目錄 rule_lint.py（若存在）檢查 Git Diff，維持 JSON 相容性。"""
+    if skip:
+        return {"skipped": True, "reason": "skipped_by_flag"}
+    if not diff_out.strip():
+        return {"skipped": True, "reason": "no_git_diff"}
+    rule_lint_path = SCRIPT_DIR / "rule_lint.py"
+    if not rule_lint_path.is_file():
+        return {"skipped": True, "reason": "rule_lint.py_not_found"}
+    try:
+        import importlib.util
+
+        mod_name = "rule_lint"
+        module = sys.modules.get(mod_name)
+        mod_file = getattr(module, "__file__", None) if module is not None else None
+        if module is None or not mod_file or Path(mod_file).resolve() != rule_lint_path.resolve():
+            spec = importlib.util.spec_from_file_location(mod_name, str(rule_lint_path))
+            if spec is None or spec.loader is None:
+                return {"skipped": True, "reason": "rule_lint_load_spec_failed"}
+            module = importlib.util.module_from_spec(spec)
+            # 預先註冊至 sys.modules，避免 @dataclass(slots=True) 在 Python 3.14 查詢 cls.__module__ 時取得 None
+            sys.modules[mod_name] = module
+            try:
+                spec.loader.exec_module(module)
+            except Exception:
+                sys.modules.pop(mod_name, None)
+                raise
+        lint_fn = getattr(module, "lint_git_diff", None)
+        if not callable(lint_fn):
+            return {"skipped": True, "reason": "lint_git_diff_missing"}
+        res = lint_fn(diff_out, repo_root=repo_root or Path.cwd())
+        if isinstance(res, dict):
+            return res
+        return {"passed": False, "error": "invalid_rule_lint_return_type", "violations": []}
+    except Exception as exc:
+        return {
+            "passed": False,
+            "error": f"{type(exc).__name__}: {exc}",
+            "violations": [],
+        }
+
+
 def compute_local_gate_score(prompt: str, results: list[dict[str, Any]]) -> dict[str, Any]:
     """JEV 有成功回答時用它的 choice／noul。沒有 JEV 時才退回數散文燈號，那個分數不是校準機率。"""
     protected_keywords = ("bin packing", "collision", "bounding box", "raycast", "dxf", "matrix", "rotation", "fov", "租金", "材積")
@@ -1709,6 +1760,7 @@ def main():
     p_rev.add_argument("--output", type=str, default="", help="Write JSON result to file")
     p_rev.add_argument("--include-grok-api", action="store_true", help="Also invoke external Grok (grok.exe OAuth first, then XAI_API_KEY) instead of Cursor Plan")
     p_rev.add_argument("--force-gemini-api", action="store_true", help="Bypass Antigravity Plan (agy.exe) and use GEMINI_API_KEY directly")
+    p_rev.add_argument("--skip-rule-lint", action="store_true", default=False, help="Skip deterministic rule_lint.py check on git diff")
 
     p_gx = sub.add_parser("grok-x", help="Run Grok X.com search (grok.exe OAuth Plan first, XAI_API_KEY fallback)")
     p_gx.add_argument("--prompt", type=str, default="", help="Prompt text")
@@ -1814,6 +1866,7 @@ def main():
         if args.prompt_file and Path(args.prompt_file).exists():
             prompt_text = Path(args.prompt_file).read_text(encoding="utf-8")
         raw_user_prompt = prompt_text
+        diff_out = ""
         if args.git_diff or args.commit:
             try:
                 pathspecs = [str(p).strip() for p in (getattr(args, "paths", None) or []) if str(p).strip()]
@@ -1835,6 +1888,13 @@ def main():
             print(json.dumps({"error": "Empty prompt"}, ensure_ascii=False))
             return
 
+        skip_rule_lint = bool(getattr(args, "skip_rule_lint", False))
+        deterministic_lint = _run_deterministic_rule_lint(
+            diff_out=diff_out,
+            repo_root=Path.cwd(),
+            skip=skip_rule_lint,
+        )
+
         skill_plan = plan_role_skill_matrix(raw_user_prompt)
         results = []
         with concurrent.futures.ThreadPoolExecutor(max_workers=max(1, len(endpoints))) as ex:
@@ -1843,9 +1903,20 @@ def main():
                 results.append(f.result())
 
         local_summary = compute_local_gate_score(prompt_text, results)
+        if (
+            not skip_rule_lint
+            and isinstance(deterministic_lint, dict)
+            and deterministic_lint.get("passed") is False
+        ):
+            local_summary["gate_verdict"] = "BLOCK"
+            local_summary["block_reason"] = "rule_lint_failed"
+            local_summary["rule_lint_failed"] = True
+            local_summary["rule_lint_violations"] = deterministic_lint.get("violations", [])
+
         out_data = {
             "status": "completed",
             "total_models_called": len(results),
+            "deterministic_lint": deterministic_lint,
             "skill_binding_plan": {
                 "industry_family": skill_plan["industry_family"],
                 "detected_task_domains": skill_plan["detected_task_domains"],

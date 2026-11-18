@@ -1,57 +1,132 @@
-<#
+﻿<#
 .SYNOPSIS
   Gemini CLI BeforeTool Safety Hook
+.NOTES
+  無互動視窗 (CreateNoWindow) 呼叫 powershell.exe -File 時建議搭配 -InputFormat None，避免 PS 5.1 預設 Host 搶佔 stdin。
 #>
 
+try {
+    [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
+} catch {}
+$OutputEncoding = [System.Text.Encoding]::UTF8
+
+$inputJson = ""
 if ($MyInvocation.ExpectingInput) {
     $inputJson = $input | Out-String
-} else {
-    $inputJson = [Console]::In.ReadToEnd()
+}
+$isTopLevelScript = ((Get-PSCallStack).Count -le 1)
+if ([string]::IsNullOrWhiteSpace($inputJson) -and $isTopLevelScript) {
+    if ([Console]::IsInputRedirected) {
+        $reader = New-Object System.IO.StreamReader([Console]::OpenStandardInput(), [System.Text.Encoding]::UTF8, $true)
+        $inputJson = $reader.ReadToEnd()
+    } elseif (-not $MyInvocation.ExpectingInput) {
+        $inputJson = [Console]::In.ReadToEnd()
+    }
+}
+
+function Get-InputPropertyValue {
+    param(
+        [object]$Obj,
+        [string[]]$Names
+    )
+    if ($null -eq $Obj) { return "" }
+    foreach ($name in $Names) {
+        $prop = $Obj.PSObject.Properties | Where-Object { $_.Name -ceq $name } | Select-Object -First 1
+        if ($null -eq $prop) {
+            $prop = $Obj.PSObject.Properties | Where-Object { $_.Name -ieq $name } | Select-Object -First 1
+        }
+        if ($null -ne $prop -and $null -ne $prop.Value) {
+            $val = [string]$prop.Value
+            if ($val.Length -gt 0) {
+                return $val
+            }
+        }
+    }
+    return ""
+}
+
+function Test-IsTestFileName {
+    param([string]$FilePath)
+    if ([string]::IsNullOrWhiteSpace($FilePath)) { return $false }
+    $segments = @($FilePath.Trim() -split '[/\\]' | Where-Object { $_.Length -gt 0 })
+    if ($segments.Count -eq 0) { return $false }
+    $fileName = $segments[-1]
+    if ($fileName -imatch '^(test_.*\.py|.*_test\.py|.+\.test\..+|.+\.spec\..+)$') {
+        return $true
+    }
+    if ($segments.Count -ge 2 -and ($fileName -imatch '\.(py|ts|tsx|js|jsx)$')) {
+        $dirSegments = $segments[0..($segments.Count - 2)]
+        foreach ($seg in $dirSegments) {
+            if ($seg -imatch '^(__tests__|tests)$') {
+                return $true
+            }
+        }
+    }
+    return $false
 }
 
 try {
-    $data = $inputJson | ConvertFrom-Json
-    $command = ""
-    if ($data.tool_input.command) { $command = $data.tool_input.command }
-    elseif ($data.tool_input.CommandLine) { $command = $data.tool_input.CommandLine }
-    elseif ($data.tool_input.content) { $command = $data.tool_input.content }
-    elseif ($data.tool_input.new_string) { $command = $data.tool_input.new_string }
+    if ([string]::IsNullOrWhiteSpace($inputJson)) {
+        throw "Empty JSON payload."
+    }
+    $data = $inputJson | ConvertFrom-Json -ErrorAction Stop
+    if ($null -eq $data) {
+        throw "Parsed JSON payload is null."
+    }
+    $toolInput = $null
+    if ($data.PSObject.Properties['tool_input']) {
+        $toolInput = $data.tool_input
+    }
+    $targetPath = Get-InputPropertyValue -Obj $toolInput -Names @('path', 'Path', 'file_path', 'TargetFile')
+    $writeContent = Get-InputPropertyValue -Obj $toolInput -Names @('content', 'new_string', 'Replacement')
+    $command = Get-InputPropertyValue -Obj $toolInput -Names @('command', 'CommandLine', 'content', 'new_string', 'Replacement')
 } catch {
     # Fail-Closed
+    $failHint = "請傳入合法的 JSON 格式 tool_input payload 物件後重試。"
     $fallbackResult = @{
         decision = "deny"
-        reason = "Safety-Guard Blocked: Invalid JSON format. Fail-Closed triggered."
-        systemMessage = "Safety Guard Rejected: Invalid format or payload. Fail-Closed protection triggered."
+        reason = "Safety-Guard Blocked: Invalid JSON format. Fail-Closed triggered. 修復指引: $failHint"
+        systemMessage = "Safety Guard Rejected: Invalid format or payload. Fail-Closed protection triggered. 修復指引: $failHint"
     } | ConvertTo-Json -Compress
     Write-Output $fallbackResult
     exit 0
 }
 
-$dangerousPatterns = @(
-    'rm\s+-rf',
-    'rmdir\s+/s',
-    'Remove-Item.*-Recurse.*-Force',
-    'del\s+/[fq]',
-    'git\s+reset\s+--hard',
-    'git\s+clean\s+-[fd]',
-    'git\s+push\s+.*--force',
-    'DROP\s+TABLE',
-    'DROP\s+DATABASE',
-    'DELETE\s+FROM\s+\w+\s*$',
-    'TRUNCATE\s+TABLE',
-    'curl.*(-d|--data).*[Aa][Pp][Ii][_-]?[Kk][Ee][Yy]',
-    'Invoke-WebRequest.*-Body.*[Ss]ecret',
-    'curl.*(-d|--data).*[Pp]assword',
-    'Send-MailMessage',
-    'sendmail',
-    'npm\s+publish',
-    'pip\s+upload',
-    'twine\s+upload',
-    'docker\s+push',
-    'pip\s+install\s+(?!-r\s)',
-    'Set-ExecutionPolicy\s+Unrestricted',
-    'Format-Volume',
-    'Clear-Disk'
+$deleteFixHint = "請確認刪除目標路徑範圍非專案根目錄或系統目錄（建議先檢視檔案清單），並取得使用者明確授權。"
+$gitFixHint = "請確認目標分支與變更影響範圍（可改用 git stash 或 --force-with-lease），並取得使用者明確授權。"
+$sqlFixHint = "請確認目標資料庫與資料表範圍並先完成備份（DELETE 請補上 WHERE 條件），並取得使用者明確授權。"
+$exfilFixHint = "請勿透過指令行傳送明文金鑰或密碼，改由伺服器環境變數或 Windows DPAPI (%LOCALAPPDATA%\US3C\Secrets\) 讀取並確認端點合法性。"
+$publishFixHint = "對外發信或公開發布套件／映像屬不可逆外部影響，請確認目標版本、收件人與倉庫位置並取得使用者明確授權。"
+$pipFixHint = "請改用專案虛擬環境 .venv\Scripts\pip.exe install，或透過 pip install -r requirements.txt 安裝以鎖定依賴。"
+$systemFixHint = "請改用最小權限範圍（如 -ExecutionPolicy Bypass -Scope Process）或先確認目標磁碟並取得使用者明確授權。"
+$secretFixHint = "嚴禁明文硬編碼或傳輸密鑰／密碼，請改存於 Windows DPAPI (%LOCALAPPDATA%\US3C\Secrets\) 或改由環境變數讀取。"
+$testCheatFixHint = "請修復商業邏輯或測試 fixture，嚴禁跳過斷言。"
+
+$dangerousRules = @(
+    @{ Pattern = 'rm\s+-rf'; Category = 'Destructive Delete'; FixHint = $deleteFixHint },
+    @{ Pattern = 'rmdir\s+/s'; Category = 'Destructive Delete'; FixHint = $deleteFixHint },
+    @{ Pattern = 'Remove-Item.*-Recurse.*-Force'; Category = 'Destructive Delete'; FixHint = $deleteFixHint },
+    @{ Pattern = 'del\s+/[fq]'; Category = 'Destructive Delete'; FixHint = $deleteFixHint },
+    @{ Pattern = 'git\s+reset\s+--hard'; Category = 'Destructive Git'; FixHint = $gitFixHint },
+    @{ Pattern = 'git\s+clean\s+-[fd]'; Category = 'Destructive Git'; FixHint = $gitFixHint },
+    @{ Pattern = 'git\s+push\s+.*--force'; Category = 'Destructive Git'; FixHint = $gitFixHint },
+    @{ Pattern = 'DROP\s+TABLE'; Category = 'Destructive SQL'; FixHint = $sqlFixHint },
+    @{ Pattern = 'DROP\s+DATABASE'; Category = 'Destructive SQL'; FixHint = $sqlFixHint },
+    @{ Pattern = 'DELETE\s+FROM\s+\w+\s*$'; Category = 'Destructive SQL'; FixHint = $sqlFixHint },
+    @{ Pattern = 'TRUNCATE\s+TABLE'; Category = 'Destructive SQL'; FixHint = $sqlFixHint },
+    @{ Pattern = 'curl.*(-d|--data).*[Aa][Pp][Ii][_-]?[Kk][Ee][Yy]'; Category = 'Credential Exfiltration'; FixHint = $exfilFixHint },
+    @{ Pattern = 'Invoke-WebRequest.*-Body.*[Ss]ecret'; Category = 'Credential Exfiltration'; FixHint = $exfilFixHint },
+    @{ Pattern = 'curl.*(-d|--data).*[Pp]assword'; Category = 'Credential Exfiltration'; FixHint = $exfilFixHint },
+    @{ Pattern = 'Send-MailMessage'; Category = 'External Dispatch'; FixHint = $publishFixHint },
+    @{ Pattern = 'sendmail'; Category = 'External Dispatch'; FixHint = $publishFixHint },
+    @{ Pattern = 'npm\s+publish'; Category = 'External Publish'; FixHint = $publishFixHint },
+    @{ Pattern = 'pip\s+upload'; Category = 'External Publish'; FixHint = $publishFixHint },
+    @{ Pattern = 'twine\s+upload'; Category = 'External Publish'; FixHint = $publishFixHint },
+    @{ Pattern = 'docker\s+push'; Category = 'External Publish'; FixHint = $publishFixHint },
+    @{ Pattern = '(?:^|\s)pip3?\s+install\s+(?!-r\s*)'; Category = 'Unmanaged Pip Install'; FixHint = $pipFixHint },
+    @{ Pattern = 'Set-ExecutionPolicy\s+Unrestricted'; Category = 'System Policy'; FixHint = $systemFixHint },
+    @{ Pattern = 'Format-Volume'; Category = 'Disk Wipe'; FixHint = $systemFixHint },
+    @{ Pattern = 'Clear-Disk'; Category = 'Disk Wipe'; FixHint = $systemFixHint }
 )
 
 $secretPatterns = @(
@@ -65,13 +140,21 @@ $secretPatterns = @(
     'AKIA[A-Z0-9]{16}'
 )
 
+$testCheatPatterns = @(
+    '\.skip\s*\(',
+    'pytest\.mark\.skip',
+    '@unittest\.skip'
+)
+
 $blocked = $false
 $reason = ""
+$systemMessage = ""
 
-foreach ($pattern in $dangerousPatterns) {
-    if ($command -match $pattern) {
+foreach ($rule in $dangerousRules) {
+    if ($command -match $rule.Pattern) {
         $blocked = $true
-        $reason = "Dangerous command pattern detected: $pattern"
+        $reason = "Dangerous command pattern detected ($($rule.Category)): $($rule.Pattern). 修復指引: $($rule.FixHint)"
+        $systemMessage = "Safety Guard Rejected ($($rule.Category)): $($rule.FixHint)"
         break
     }
 }
@@ -80,7 +163,20 @@ if (-not $blocked) {
     foreach ($pattern in $secretPatterns) {
         if ($command -match $pattern) {
             $blocked = $true
-            $reason = "Secret leak detected: Possible API Key / Password"
+            $reason = "Secret leak detected: Possible API Key / Password. 修復指引: $secretFixHint"
+            $systemMessage = "Safety Guard Rejected (Secret Leak): $secretFixHint"
+            break
+        }
+    }
+}
+
+if (-not $blocked -and (Test-IsTestFileName -FilePath $targetPath) -and ($writeContent.Length -gt 0)) {
+    foreach ($pattern in $testCheatPatterns) {
+        if ($writeContent -cmatch $pattern) {
+            $blocked = $true
+            $fileName = ($targetPath.Trim() -split '[/\\]')[-1]
+            $reason = "Test cheating detected in '$fileName': matched '$pattern'. 修復指引: $testCheatFixHint"
+            $systemMessage = "Safety Guard Rejected (Test Cheating): $testCheatFixHint"
             break
         }
     }
@@ -90,7 +186,7 @@ if ($blocked) {
     $result = @{
         decision = "deny"
         reason = $reason
-        systemMessage = "Safety Guard Rejected: This operation is blocked. Please confirm with the user."
+        systemMessage = $systemMessage
     } | ConvertTo-Json -Compress
     Write-Output $result
     exit 0
