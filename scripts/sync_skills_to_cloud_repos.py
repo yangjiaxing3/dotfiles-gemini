@@ -378,15 +378,16 @@ def _iter_effective_global_rules() -> list[Path]:
     return [merged[k] for k in sorted(merged.keys())]
 
 
-def ensure_agents_md_ssot(repo: Path, dry_run: bool = False) -> bool:
+def ensure_agents_md_ssot(repo: Path, dry_run: bool = False, repo_name: str | None = None) -> bool:
     """
     將 Lean-Triad 單一真相來源區塊自動注入專案根目錄 AGENTS.md（Cursor Cloud Agents 唯一必讀系統提示檔）。
     若原本已有舊版 `## Lean-Triad 執行回條` 或 `## Cursor Cloud & Agent Skills (Lean-Triad)` 則原位替換為受管區塊。
     """
+    target_name = repo_name or repo.name
     agents_md = repo / "AGENTS.md"
     if not agents_md.is_file():
         if not dry_run:
-            agents_md.write_text(f"# AGENTS.md — {repo.name}\n\n{CANONICAL_AGENTS_SSOT_BLOCK}\n", encoding="utf-8")
+            agents_md.write_text(f"# AGENTS.md — {target_name}\n\n{CANONICAL_AGENTS_SSOT_BLOCK}\n", encoding="utf-8")
         return True
 
     original = agents_md.read_text(encoding="utf-8")
@@ -432,8 +433,9 @@ def ensure_agents_md_ssot(repo: Path, dry_run: bool = False) -> bool:
     return False
 
 
-def sync_repo(repo: Path, global_skills: list[Path], rules_only: bool = False, dry_run: bool = False) -> dict:
-    family = get_repo_family(repo.name)
+def sync_repo(repo: Path, global_skills: list[Path], rules_only: bool = False, dry_run: bool = False, repo_name: str | None = None) -> dict:
+    target_name = repo_name or repo.name
+    family = get_repo_family(target_name)
     if family == "shared":
         excluded_skills: set[str] = set()
         excluded_rules: set[str] = set()
@@ -515,7 +517,7 @@ def sync_repo(repo: Path, global_skills: list[Path], rules_only: bool = False, d
 
     # 1b. 自動同步專案根目錄 AGENTS.md 的受管單一真相來源區塊 (SSOT)
     agents_existed = (repo / "AGENTS.md").is_file()
-    agents_md_updated = ensure_agents_md_ssot(repo, dry_run=dry_run)
+    agents_md_updated = ensure_agents_md_ssot(repo, dry_run=dry_run, repo_name=target_name)
     if agents_md_updated:
         planned_actions.append(f"{'update' if agents_existed else 'create'}:AGENTS.md")
 
@@ -527,7 +529,7 @@ def sync_repo(repo: Path, global_skills: list[Path], rules_only: bool = False, d
 
     if rules_only:
         return {
-            "repo": repo.name,
+            "repo": target_name,
             "family": family,
             "dry_run": dry_run,
             "rules_synced": rules_synced,
@@ -571,7 +573,7 @@ def sync_repo(repo: Path, global_skills: list[Path], rules_only: bool = False, d
         if skill_files_changed:
             planned_actions.append(f"sync_skill_files:.agent/skills ({skill_files_changed} files)")
         return {
-            "repo": repo.name,
+            "repo": target_name,
             "family": family,
             "dry_run": dry_run,
             "architecture": "git-symlink-single-source",
@@ -669,7 +671,7 @@ def sync_repo(repo: Path, global_skills: list[Path], rules_only: bool = False, d
                 commands_synced += 1
 
     return {
-        "repo": repo.name,
+        "repo": target_name,
         "family": family,
         "dry_run": dry_run,
         "rules_synced": rules_synced,
