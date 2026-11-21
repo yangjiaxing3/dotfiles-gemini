@@ -79,6 +79,7 @@ try {
     }
     $targetPath = Get-InputPropertyValue -Obj $toolInput -Names @('path', 'Path', 'file_path', 'TargetFile')
     $writeContent = Get-InputPropertyValue -Obj $toolInput -Names @('content', 'new_string', 'Replacement')
+    $shellCmd = Get-InputPropertyValue -Obj $toolInput -Names @('command', 'CommandLine')
     $command = Get-InputPropertyValue -Obj $toolInput -Names @('command', 'CommandLine', 'content', 'new_string', 'Replacement')
 } catch {
     # Fail-Closed
@@ -178,6 +179,114 @@ if (-not $blocked -and (Test-IsTestFileName -FilePath $targetPath) -and ($writeC
             $reason = "Test cheating detected in '$fileName': matched '$pattern'. 修復指引: $testCheatFixHint"
             $systemMessage = "Safety Guard Rejected (Test Cheating): $testCheatFixHint"
             break
+        }
+    }
+}
+
+if (-not $blocked -and $shellCmd.Length -gt 0) {
+    $commitMatches = [regex]::Matches(
+        $shellCmd,
+        '(?:^|[;&|\r\n]\s*)git(?:\.exe)?((?:\s+(?:-C\s+(?:"[^"]+"|''[^'']+''|\S+)|-c\s+(?:"[^"]+"|''[^'']+''|\S+)|--no-pager|--bare|--git-dir=\S+|--work-tree=\S+))*)\s+commit\b([^\r\n;&|]*)',
+        [System.Text.RegularExpressions.RegexOptions]::IgnoreCase
+    )
+    $lintScript = Join-Path $HOME ".gemini\scripts\rule_lint.py"
+    foreach ($commitMatch in $commitMatches) {
+        $globalOpts = $commitMatch.Groups[1].Value
+        $commitTail = $commitMatch.Groups[2].Value
+        $commitTailNoMsg = [regex]::Replace(
+            $commitTail,
+            '(?i)(?:^|\s)(?:-m|--message)(?:\s+|=)(?:"(?:\\.|[^"])*"|''[^'']*'')',
+            ' '
+        )
+        if ($commitTailNoMsg -match '(?i)(?:^|\s)(?:--help|-h)(?:\s|$)') {
+            continue
+        }
+
+        $candidateDir = ""
+        $cMatches = [regex]::Matches($globalOpts, '\s-C\s+(?:"([^"]+)"|''([^'']+)''|(\S+))')
+        if ($cMatches.Count -gt 0) {
+            $lastC = $cMatches[$cMatches.Count - 1]
+            if ($lastC.Groups[1].Success) { $candidateDir = $lastC.Groups[1].Value }
+            elseif ($lastC.Groups[2].Success) { $candidateDir = $lastC.Groups[2].Value }
+            elseif ($lastC.Groups[3].Success) { $candidateDir = $lastC.Groups[3].Value }
+        }
+        if ([string]::IsNullOrWhiteSpace($candidateDir)) {
+            $candidateDir = Get-InputPropertyValue -Obj $toolInput -Names @('cwd', 'Cwd', 'WorkingDirectory')
+        }
+        if ([string]::IsNullOrWhiteSpace($candidateDir)) {
+            $candidateDir = (Get-Location).Path
+        }
+        $candidateDir = $candidateDir.Trim()
+
+        $repoDir = ""
+        if (-not [string]::IsNullOrWhiteSpace($candidateDir)) {
+            try {
+                $resolvedTop = (& git -C $candidateDir rev-parse --show-toplevel 2>$null | Out-String).Trim()
+                if ($LASTEXITCODE -eq 0 -and -not [string]::IsNullOrWhiteSpace($resolvedTop)) {
+                    $repoDir = $resolvedTop
+                }
+            } catch {
+                $repoDir = ""
+            }
+        }
+
+        if (-not [string]::IsNullOrWhiteSpace($repoDir) -and (Test-Path -LiteralPath $lintScript)) {
+            $hasCommitAll = ($commitTailNoMsg -cmatch '(?:^|\s)-(?:[a-zA-Z]*a[a-zA-Z]*|-all)(?:\s|$)')
+            $hasBulkGitAdd = ($shellCmd -imatch '(?:^|[;&|\r\n]\s*)git(?:\.exe)?(?:\s+-C\s+(?:"[^"]+"|''[^'']+''|\S+))?\s+add\s+(?:[^\r\n;&|]*\s)?(?:-A|--all|-u|\.(?:\s|$|[;&|]))')
+            $useWorkingTreeDiff = $hasCommitAll -or $hasBulkGitAdd
+            $lintArgs = if ($useWorkingTreeDiff) {
+                @($lintScript, "--git-diff", "--repo", $repoDir, "--format", "json")
+            } else {
+                @($lintScript, "--git-diff", "--staged", "--repo", $repoDir, "--format", "json")
+            }
+            $pythonCmd = Get-Command python -ErrorAction SilentlyContinue
+            if ($null -eq $pythonCmd) {
+                $pythonCmd = Get-Command python3 -ErrorAction SilentlyContinue
+            }
+            $ruleLintFixHint = "請先修正違規並執行 python scripts/rule_lint.py --git-diff 確認 0 errors 後再提交。"
+            if ($null -eq $pythonCmd) {
+                $blocked = $true
+                $reason = "Rule-Lint Gate Blocked: Python runtime not found. 修復指引: $ruleLintFixHint"
+                $systemMessage = "Rule-Lint Gate Rejected: Python runtime not found. 修復指引: $ruleLintFixHint"
+                break
+            }
+            $prevEncoding = $env:PYTHONIOENCODING
+            $env:PYTHONIOENCODING = "utf-8"
+            try {
+                $lintOut = & $pythonCmd.Source @lintArgs 2>&1 | Out-String
+                $lintExit = $LASTEXITCODE
+            } finally {
+                if ($null -eq $prevEncoding) {
+                    Remove-Item Env:PYTHONIOENCODING -ErrorAction SilentlyContinue
+                } else {
+                    $env:PYTHONIOENCODING = $prevEncoding
+                }
+            }
+            if ($lintExit -ne 0) {
+                $summaryParts = @()
+                $errCount = 1
+                try {
+                    $lintReport = $lintOut.Trim() | ConvertFrom-Json -ErrorAction Stop
+                    if ($lintReport.error_count) { $errCount = [int]$lintReport.error_count }
+                    if ($lintReport.violations) {
+                        $summaryParts = @(
+                            $lintReport.violations | Select-Object -First 3 | ForEach-Object {
+                                "[$($_.rule_id)] $($_.file):$($_.line)"
+                            }
+                        )
+                    } elseif ($lintReport.error) {
+                        $summaryParts = @([string]$lintReport.error)
+                    }
+                } catch {
+                    # JSON 解析失敗或 tool exception (exit=2) 時仍強制攔截提交
+                    $summaryParts = @("exit=$lintExit")
+                }
+                $summaryText = if ($summaryParts.Count -gt 0) { $summaryParts -join "; " } else { "rule_lint failed (exit=$lintExit)" }
+                $blocked = $true
+                $reason = "Rule-Lint Gate Blocked ($errCount errors): $summaryText. 修復指引: $ruleLintFixHint"
+                $systemMessage = "Rule-Lint Gate Rejected ($errCount errors): $summaryText. 修復指引: $ruleLintFixHint"
+                break
+            }
         }
     }
 }

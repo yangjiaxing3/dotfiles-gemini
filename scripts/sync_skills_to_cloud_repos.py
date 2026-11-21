@@ -20,6 +20,7 @@ import json
 import os
 import re
 import shutil
+import sys
 from pathlib import Path
 
 HOME = Path.home()
@@ -108,6 +109,37 @@ US3C_ONLY_SKILLS = {
 
 STOREASY_ONLY_RULES = {"storeasy-domain-invariants.mdc"}
 US3C_ONLY_RULES = {"us3c-domain-invariants.mdc", "us3c-incident-l-grades.mdc"}
+
+# 曾下發至各專案但已在全域淘汰／改名之舊技能目錄，須自專案雙目錄與 Cursor 目錄清理
+KNOWN_OBSOLETE_SKILL_DIRS = {
+    "vercel-react-best-practices",
+    "claude.ai",
+    "agency-automation-governance-architect",
+    "agency-engineering-data-engineer",
+    "agency-engineering-incident-response-commander",
+    "agency-engineering-minimal-change-engineer",
+    "agency-engineering-sre",
+    "agency-project-manager-senior",
+    "agency-testing-evidence-collector",
+    "bigquery-data-transfer-service",
+    "building-data-apps",
+    "cloud-databases-onboarding",
+    "data-autocleaning",
+    "dataform-bigquery",
+    "dbt-bigquery",
+    "discovering-gcp-data-assets",
+    "enforcing-resource-attribution",
+    "gcp-data-pipelines",
+    "gcp-dataflow",
+    "gcp-pipeline-orchestration",
+    "gcp-pipeline-resource-provisioning",
+    "gcp-spark",
+    "gcp-spark-observability",
+    "gcp-spark-troubleshooting",
+    "ml-best-practices",
+    "notebook-guidance",
+    "schema-mapping",
+}
 
 # 供 Cursor 對話框輸入 `/` 直接彈出選單的核心與產業專屬 Slash Commands (.cursor/commands/*.md)
 SHARED_SLASH_COMMAND_SKILLS = {
@@ -304,7 +336,7 @@ CANONICAL_AGENTS_SSOT_BLOCK = """<!-- BEGIN_LEAN_TRIAD_SSOT -->
 
 > 本區塊由 `scripts/sync_skills_to_cloud_repos.py` 與 `scripts/bootstrap_cursor_cloud.py` 自 `~/.gemini/GEMINI.md` 及 `.cursor/rules/engineering-core.mdc` 自動同步鎖定；請勿單獨手改，避免本機與雲端規則分裂。
 
-- **常駐底層引擎與受保護禁區**：`🧭 Graphify 圖譜導航` + `🧰 Role-Scoped Skills 動態掛載` + `✂️ Ponytail 極簡守則` 為常駐引擎；嚴禁簡化 3D 空間幾何／財務計價／硬體 IoT FOV 校準與跨庫 API 契約。刪減 `> 15` 行、移除抽象層／檔案或指定 `/multi-agent-mode` 時強制執行 `python3 scripts/multi_model_gate.py review --prompt "..." --git-diff --output temp_multi_review.json`（Plan／子代理優先 → 官方直連 → OpenRouter；Qwen 固定 `qwen-max`）。
+- **常駐底層引擎與受保護禁區**：`🧭 Graphify 圖譜導航` + `🧰 Role-Scoped Skills 動態掛載` + `✂️ Ponytail 極簡守則` 為常駐引擎；嚴禁簡化 3D 空間幾何／財務計價／硬體 IoT FOV 校準與跨庫 API 契約。刪減 `> 15` 行、移除抽象層／檔案或指定 `/multi-agent-mode` 時強制執行 `python3 scripts/multi_model_gate.py review --prompt "..." --git-diff --output temp_multi_review.json`（Plan／子代理優先 → 官方直連 → OpenRouter；Qwen 預設使用 `qwen4-max-preview`（備援 `qwen-max`））。
 - **確定性門禁與技能路由**：
   - 改碼後強制執行確定性檢查：`python3 scripts/rule_lint.py --git-diff`（自動攔截 UI Emoji、按鈕過長或缺 `aria-label`/`title`、`<input type="date" lang="en" />` 缺漏、`dangerouslySetInnerHTML`、`.skip`／空 `catch` 與 `TODO:`/`FIXME:`/`HACK:`/`XXX:` 藉口註解；僅允許 `// shortcut: <上限條件>, <何時該升級>`）。
   - 前端 UI 遵循 `stageshow` × `impeccable` × `design-taste-frontend`（詳見 `.cursor/rules/react-typescript.mdc`）；精簡按鈕時**嚴禁刪除**不可逆風險警告、交易計價／稅額條件、合規聲明與專案 SEO/GEO 訊號。
@@ -433,6 +465,141 @@ def ensure_agents_md_ssot(repo: Path, dry_run: bool = False, repo_name: str | No
     return False
 
 
+PRE_COMMIT_BEGIN = "# BEGIN_LEAN_TRIAD_RULE_LINT_HOOK"
+PRE_COMMIT_END = "# END_LEAN_TRIAD_RULE_LINT_HOOK"
+PRE_COMMIT_HOOK_BLOCK = """# BEGIN_LEAN_TRIAD_RULE_LINT_HOOK
+_LT_REPO_ROOT="$(git rev-parse --show-toplevel 2>/dev/null || pwd)"
+_LT_LINT="$_LT_REPO_ROOT/scripts/rule_lint.py"
+if [ ! -f "$_LT_LINT" ] || ! grep -q -- "--staged" "$_LT_LINT" 2>/dev/null; then
+  [ -f "$HOME/.gemini/scripts/rule_lint.py" ] && _LT_LINT="$HOME/.gemini/scripts/rule_lint.py"
+fi
+if [ -f "$_LT_LINT" ]; then
+  _LT_PY=""
+  for _lt_cand in python3 python; do
+    if command -v "$_lt_cand" >/dev/null 2>&1 && "$_lt_cand" -c "import sys" >/dev/null 2>&1; then
+      _LT_PY="$_lt_cand"
+      break
+    fi
+  done
+  if [ -n "$_LT_PY" ]; then
+    _lt_out="$("$_LT_PY" "$_LT_LINT" --git-diff --staged --repo "$_LT_REPO_ROOT" 2>&1)"
+    _lt_rc=$?
+    if [ "$_lt_rc" -ne 0 ]; then
+      printf '%s\\n' "$_lt_out" | head -n 30
+      echo "[pre-commit][Rule-Lint Gate] 發現違規（exit=$_lt_rc），請依上方提示修正後再 commit。"
+      exit 1
+    fi
+  fi
+fi
+# END_LEAN_TRIAD_RULE_LINT_HOOK"""
+
+
+def _is_junction(path: Path) -> bool:
+    """Python 3.10+ 相容的 NTFS Junction 偵測（於 3.12+ 呼叫 is_junction，舊版回 False）。"""
+    fn = getattr(path, "is_junction", None)
+    if callable(fn):
+        try:
+            return bool(fn())
+        except OSError:
+            return False
+    return False
+
+
+def _remove_readonly_tree(path: Path) -> None:
+    """移除目錄樹並在 Windows 遇唯讀屬性阻擋時先解除只讀旗標再重試刪除。"""
+    import stat
+
+    def _on_exc(func, target, _exc):
+        try:
+            os.chmod(target, stat.S_IWRITE | stat.S_IREAD)
+            func(target)
+        except OSError:
+            # Ignore locked files that remain inaccessible even after clearing read-only flag
+            pass
+
+    if path.is_symlink() or _is_junction(path):
+        try:
+            path.unlink()
+        except OSError:
+            os.rmdir(path)
+        return
+    if sys.version_info >= (3, 12):
+        shutil.rmtree(path, onexc=_on_exc)
+    else:
+        shutil.rmtree(path, onerror=lambda fn, tgt, ei: _on_exc(fn, tgt, ei[1]))
+
+
+def _resolve_git_hooks_dir(repo: Path) -> Path | None:
+    if not (repo / ".git").exists():
+        return None
+    import subprocess
+
+    try:
+        rel = subprocess.check_output(
+            ["git", "-C", str(repo), "rev-parse", "--git-path", "hooks"],
+            text=True,
+            stderr=subprocess.DEVNULL,
+        ).strip()
+        if not rel:
+            return None
+        p = Path(rel)
+        hooks_path = p.resolve() if p.is_absolute() else (repo / p).resolve()
+        # 邊界守門：若設定了指向倉庫外部的 core.hooksPath，拒絕跨界寫入
+        if not hooks_path.is_relative_to(repo.resolve()):
+            return None
+        return hooks_path
+    except Exception:
+        # Non-git directory or corrupted .git pointer file; skip hook injection safely
+        return None
+
+
+def ensure_git_pre_commit_rule_lint(repo: Path, dry_run: bool = False) -> bool:
+    """以 Unix LF 無損將 rule_lint.py --staged 門禁掛入 .git/hooks/pre-commit，保留專案既有檢查。"""
+    hooks_dir = _resolve_git_hooks_dir(repo)
+    if hooks_dir is None:
+        return False
+    pre_commit = hooks_dir / "pre-commit"
+    if pre_commit.is_file():
+        raw_bytes = pre_commit.read_bytes()
+        try:
+            original = raw_bytes.decode("utf-8-sig", errors="strict").replace("\r\n", "\n")
+        except UnicodeDecodeError:
+            # Avoid corrupting legacy non-UTF-8 hook files
+            return False
+        if PRE_COMMIT_BEGIN in original and PRE_COMMIT_END in original:
+            pattern = re.compile(
+                re.escape(PRE_COMMIT_BEGIN) + r".*?" + re.escape(PRE_COMMIT_END),
+                re.DOTALL,
+            )
+            updated = pattern.sub(lambda _: PRE_COMMIT_HOOK_BLOCK, original)
+        elif re.search(r"\nexit 0[ \t]*\n?$", original):
+            updated = re.sub(
+                r"\nexit 0[ \t]*\n?$",
+                lambda _: f"\n\n{PRE_COMMIT_HOOK_BLOCK}\nexit 0\n",
+                original,
+                count=1,
+            )
+        else:
+            updated = original.rstrip() + f"\n\n{PRE_COMMIT_HOOK_BLOCK}\n"
+        new_bytes = updated.encode("utf-8")
+        changed = new_bytes != raw_bytes
+    else:
+        updated = f"#!/bin/sh\n{PRE_COMMIT_HOOK_BLOCK}\nexit 0\n"
+        new_bytes = updated.encode("utf-8")
+        changed = True
+
+    if changed and not dry_run:
+        hooks_dir.mkdir(parents=True, exist_ok=True)
+        with pre_commit.open("w", encoding="utf-8", newline="\n") as fh:
+            fh.write(updated)
+        try:
+            os.chmod(pre_commit, 0o755)
+        except OSError:
+            # Windows NTFS ignores POSIX executable bit; ignore chmod failure safely
+            pass
+    return changed
+
+
 def sync_repo(repo: Path, global_skills: list[Path], rules_only: bool = False, dry_run: bool = False, repo_name: str | None = None) -> dict:
     target_name = repo_name or repo.name
     family = get_repo_family(target_name)
@@ -527,6 +694,11 @@ def sync_repo(repo: Path, global_skills: list[Path], rules_only: bool = False, d
     if env_json_updated:
         planned_actions.append(f"{'update' if env_existed else 'create'}:.cursor/environment.json")
 
+    # 3b. 無損掛載 .git/hooks/pre-commit 的 rule_lint.py --staged 守門區塊
+    pre_commit_updated = ensure_git_pre_commit_rule_lint(repo, dry_run=dry_run)
+    if pre_commit_updated:
+        planned_actions.append("update:.git/hooks/pre-commit")
+
     if rules_only:
         return {
             "repo": target_name,
@@ -535,6 +707,7 @@ def sync_repo(repo: Path, global_skills: list[Path], rules_only: bool = False, d
             "rules_synced": rules_synced,
             "agents_md_ssot_updated": agents_md_updated,
             "env_json_updated": env_json_updated,
+            "pre_commit_updated": pre_commit_updated,
             "gitignore_fixed": gitignore_fixed,
             "planned_actions": planned_actions,
             "mode": "rules_only",
@@ -555,10 +728,19 @@ def sync_repo(repo: Path, global_skills: list[Path], rules_only: bool = False, d
             primary_skills_dst.mkdir(parents=True, exist_ok=True)
         if primary_skills_dst.is_dir():
             for child in list(primary_skills_dst.iterdir()):
-                if (child.name in excluded_skills or child.name.startswith("source-command-")) and child.is_dir():
+                if child.name == ".datacloud_skills_manifest" and child.is_file():
                     planned_actions.append(f"delete:.agent/skills/{child.name}")
                     if not dry_run:
-                        shutil.rmtree(child, ignore_errors=True)
+                        child.unlink(missing_ok=True)
+                    continue
+                if (
+                    child.name in excluded_skills
+                    or child.name in KNOWN_OBSOLETE_SKILL_DIRS
+                    or child.name.startswith("source-command-")
+                ) and child.is_dir():
+                    planned_actions.append(f"delete:.agent/skills/{child.name}")
+                    if not dry_run:
+                        _remove_readonly_tree(child)
         skill_count = 0
         skill_files_changed = 0
         for s_dir in family_skills:
@@ -566,7 +748,7 @@ def sync_repo(repo: Path, global_skills: list[Path], rules_only: bool = False, d
             if s_dir.name != fm_name and (primary_skills_dst / s_dir.name).is_dir() and (primary_skills_dst / fm_name).is_dir():
                 planned_actions.append(f"delete:.agent/skills/{s_dir.name}")
                 if not dry_run:
-                    shutil.rmtree(primary_skills_dst / s_dir.name, ignore_errors=True)
+                    _remove_readonly_tree(primary_skills_dst / s_dir.name)
             target_dir_name = s_dir.name if (primary_skills_dst / s_dir.name).is_dir() else fm_name
             skill_files_changed += copy_clean_skill_dir(s_dir, primary_skills_dst / target_dir_name, dry_run=dry_run)
             skill_count += 1
@@ -581,6 +763,7 @@ def sync_repo(repo: Path, global_skills: list[Path], rules_only: bool = False, d
             "commands_synced": 0,
             "skills_synced": skill_count,
             "agents_md_ssot_updated": agents_md_updated,
+            "pre_commit_updated": pre_commit_updated,
             "gitignore_fixed": gitignore_fixed,
             "planned_actions": planned_actions,
         }
@@ -597,22 +780,62 @@ def sync_repo(repo: Path, global_skills: list[Path], rules_only: bool = False, d
     except OSError:
         same_target = False
 
+    # 清理非 Git-symlink 專案之舊版 .agent/skills（遷移專案獨有客製技能至 .agents/skills 後徹底刪除）
     legacy_agent_skills = repo / ".agent" / "skills"
-    has_legacy = False
+    global_known_names: set[str] = set()
+    for d in global_skills:
+        global_known_names.add(d.name)
+        global_known_names.add(read_frontmatter_name(d / "SKILL.md"))
+
+    if legacy_agent_skills.is_dir():
+        for child in list(legacy_agent_skills.iterdir()):
+            if not child.is_dir() or not (child / "SKILL.md").is_file():
+                continue
+            if (
+                child.name in excluded_skills
+                or child.name in KNOWN_OBSOLETE_SKILL_DIRS
+                or child.name.startswith("source-command-")
+                or child.name in global_known_names
+            ):
+                continue
+            child_fm = read_frontmatter_name(child / "SKILL.md")
+            if child_fm in excluded_skills or child_fm in KNOWN_OBSOLETE_SKILL_DIRS or child_fm in global_known_names:
+                continue
+            if not (agents_skills_dst / child.name).exists():
+                planned_actions.append(f"migrate:.agent/skills/{child.name}->.agents/skills/{child.name}")
+                copy_clean_skill_dir(child, agents_skills_dst / child.name, dry_run=dry_run)
+        planned_actions.append("delete:.agent/skills")
+        if not dry_run:
+            _remove_readonly_tree(legacy_agent_skills)
+            legacy_agent_root = repo / ".agent"
+            if legacy_agent_root.is_dir():
+                try:
+                    if not any(legacy_agent_root.iterdir()):
+                        legacy_agent_root.rmdir()
+                except OSError:
+                    # Keep .agent directory when locked or still holding rules/workflows
+                    pass
 
     cleanup_dirs = [agents_skills_dst]
     if not same_target:
         cleanup_dirs.append(cursor_skills_dst)
-    if has_legacy:
-        cleanup_dirs.append(legacy_agent_skills)
     for sub_dir in cleanup_dirs:
         if not sub_dir.is_dir():
             continue
         for child in list(sub_dir.iterdir()):
-            if (child.name in excluded_skills or child.name.startswith("source-command-")) and child.is_dir():
+            if child.name == ".datacloud_skills_manifest" and child.is_file():
                 planned_actions.append(f"delete:{sub_dir.relative_to(repo).as_posix()}/{child.name}")
                 if not dry_run:
-                    shutil.rmtree(child, ignore_errors=True)
+                    child.unlink(missing_ok=True)
+                continue
+            if (
+                child.name in excluded_skills
+                or child.name in KNOWN_OBSOLETE_SKILL_DIRS
+                or child.name.startswith("source-command-")
+            ) and child.is_dir():
+                planned_actions.append(f"delete:{sub_dir.relative_to(repo).as_posix()}/{child.name}")
+                if not dry_run:
+                    _remove_readonly_tree(child)
 
     skill_count = 0
     skill_files_changed = 0
@@ -622,8 +845,6 @@ def sync_repo(repo: Path, global_skills: list[Path], rules_only: bool = False, d
         skill_files_changed += copy_clean_skill_dir(s_dir, agents_skills_dst / dir_name, dry_run=dry_run)
         if not same_target:
             skill_files_changed += copy_clean_skill_dir(s_dir, cursor_skills_dst / fm_name, dry_run=dry_run)
-        if has_legacy:
-            skill_files_changed += copy_clean_skill_dir(s_dir, legacy_agent_skills / dir_name, dry_run=dry_run)
         skill_count += 1
 
     if not same_target and agents_skills_dst.is_dir():
@@ -641,7 +862,7 @@ def sync_repo(repo: Path, global_skills: list[Path], rules_only: bool = False, d
     commands_synced = 0
     is_cmd_link = False
     try:
-        is_cmd_link = commands_dst.is_symlink() or commands_dst.is_junction()
+        is_cmd_link = commands_dst.is_symlink() or _is_junction(commands_dst)
     except OSError:
         is_cmd_link = False
 
@@ -678,6 +899,7 @@ def sync_repo(repo: Path, global_skills: list[Path], rules_only: bool = False, d
         "commands_synced": commands_synced,
         "skills_synced": skill_count,
         "agents_md_ssot_updated": agents_md_updated,
+        "pre_commit_updated": pre_commit_updated,
         "gitignore_fixed": gitignore_fixed,
         "planned_actions": planned_actions,
     }
@@ -701,7 +923,7 @@ def sync_local_cursor_user_dirs(global_skills: list[Path], dry_run: bool = False
     if GLOBAL_CURSOR_SKILLS_DIR.is_dir():
         for item in list(GLOBAL_CURSOR_SKILLS_DIR.iterdir()):
             try:
-                if item.is_junction():
+                if _is_junction(item):
                     if not dry_run:
                         os.rmdir(item)
                     removed_junctions += 1
@@ -803,7 +1025,7 @@ def main() -> None:
         [
             d
             for d in GLOBAL_SKILLS_DIR.iterdir()
-            if d.is_dir() and not d.is_junction() and (d / "SKILL.md").is_file()
+            if d.is_dir() and not _is_junction(d) and (d / "SKILL.md").is_file()
         ],
         key=lambda x: x.name,
     )

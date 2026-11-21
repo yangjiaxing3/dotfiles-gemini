@@ -194,7 +194,7 @@ INTENT_SYNONYMS: dict[str, list[str]] = {
     "索引": ["agency-engineering-database-optimizer", "index", "schema"],
     "跑太慢": ["agency-engineering-database-optimizer", "agent-performance-optimizer"],
     "美化": ["stageshow", "impeccable", "design-taste-frontend", "frontend-design", "agency-design-ui-designer"],
-    "dashboard": ["stageshow", "impeccable", "frontend-design", "building-data-apps"],
+    "dashboard": ["stageshow", "impeccable", "frontend-design"],
     "動態 ui": ["stageshow", "impeccable", "design-taste-frontend", "emil-design-eng", "frontend-design"],
     "動態ui": ["stageshow", "impeccable", "design-taste-frontend", "emil-design-eng", "frontend-design"],
     "原件": ["stageshow", "impeccable", "design-taste-frontend", "emil-design-eng"],
@@ -230,7 +230,7 @@ INTENT_SYNONYMS: dict[str, list[str]] = {
     "wcag": ["agency-testing-accessibility-auditor", "無障礙", "螢幕閱讀器", "accessibility"],
     "無障礙": ["agency-testing-accessibility-auditor", "web-design-guidelines"],
     "compound components": ["vercel-composition-patterns", "composition-patterns", "boolean props"],
-    "react 19": ["vercel-composition-patterns", "vercel-react-best-practices"],
+    "react 19": ["vercel-composition-patterns", "react-best-practices"],
     "inngest": ["workflow-automation", "temporal", "n8n", "背景工作流"],
     "pdf": ["pdf", "表格提取", "合併"],
     "多據點": ["storeasy-seo-looping", "防禦性", "垃圾內容"],
@@ -349,7 +349,7 @@ def load_active_skills(
             if p.parent.name.startswith("source-command-"):
                 continue
             try:
-                if p.parent.is_junction():
+                if getattr(p.parent, "is_junction", lambda: False)():
                     continue
             except OSError:
                 pass

@@ -226,6 +226,67 @@ Test-Hook -TestName "23. Managed pip3 install (-rrequirements.txt without space)
     -Payload '{"tool_input": {"CommandLine": "pip3 install -rrequirements.txt"}}' `
     -ExpectedDecision "allow"
 
+# 24-26. Git Commit 確定性 Rule-Lint 門禁攔截與防誤殺
+$tempGitRepo = Join-Path ([System.IO.Path]::GetTempPath()) ("sg-rule-lint-" + [System.Guid]::NewGuid().ToString("N"))
+New-Item -ItemType Directory -Path (Join-Path $tempGitRepo "src") -Force | Out-Null
+try {
+    $utf8NoBom = New-Object System.Text.UTF8Encoding($false)
+    git -C $tempGitRepo init 2>&1 | Out-Null
+    git -C $tempGitRepo config user.name "Tester" 2>&1 | Out-Null
+    git -C $tempGitRepo config user.email "t@example.com" 2>&1 | Out-Null
+    [System.IO.File]::WriteAllText((Join-Path $tempGitRepo "src\Init.tsx"), "export const Init = () => <span>init</span>;`n", $utf8NoBom)
+    git -C $tempGitRepo add "." 2>&1 | Out-Null
+    git -C $tempGitRepo commit -m "init" 2>&1 | Out-Null
+
+    # 24. 暫存區含 UI Emoji 違規時執行 git commit 必須被攔截
+    $emojiFire = [char]::ConvertFromUtf32(0x1F525)
+    [System.IO.File]::WriteAllText((Join-Path $tempGitRepo "src\Bad.tsx"), "export const Bad = () => <span>$emojiFire bad</span>;`n", $utf8NoBom)
+    git -C $tempGitRepo add "src/Bad.tsx" 2>&1 | Out-Null
+    $badCommitPayload = (@{ tool_input = @{ command = "git -C `"$tempGitRepo`" commit -m `"feat: bad`"" } } | ConvertTo-Json -Compress)
+    Test-Hook -TestName "24. Git Commit with Staged Rule-Lint Violation Blocked" `
+        -Payload $badCommitPayload `
+        -ExpectedDecision "deny" `
+        -RequiredHintTokens @("Rule-Lint Gate", "修復指引:", "UI_NO_EMOJI")
+
+    # 25. 移除違規換成乾淨元件並 git add 後必須放行
+    git -C $tempGitRepo reset -q HEAD -- "src/Bad.tsx" 2>&1 | Out-Null
+    Remove-Item -LiteralPath (Join-Path $tempGitRepo "src\Bad.tsx") -ErrorAction SilentlyContinue
+    [System.IO.File]::WriteAllText((Join-Path $tempGitRepo "src\Good.tsx"), "export const Good = () => <span>clean</span>;`n", $utf8NoBom)
+    git -C $tempGitRepo add "src/Good.tsx" 2>&1 | Out-Null
+    $goodCommitPayload = (@{ tool_input = @{ command = "git -C `"$tempGitRepo`" commit -m `"feat: good`"" } } | ConvertTo-Json -Compress)
+    Test-Hook -TestName "25. Git Commit with Clean Staged Code Allowed" `
+        -Payload $goodCommitPayload `
+        -ExpectedDecision "allow"
+
+    # 26. write_file 寫入內容包含 'git commit' 字串的文件不得誤觸發 Rule-Lint 攔截
+    $docPayload = (@{ tool_input = @{ TargetFile = "docs/notes.md"; content = "git -C `"$tempGitRepo`" commit -m `"test`"" } } | ConvertTo-Json -Compress)
+    Test-Hook -TestName "26. Write File Containing 'git commit' Text Allowed (No False Positive)" `
+        -Payload $docPayload `
+        -ExpectedDecision "allow"
+
+    # 27. 在 Repo 子目錄執行無 -C 之 git commit 且暫存區含違規時，仍須透過 rev-parse 精準攔截
+    [System.IO.File]::WriteAllText((Join-Path $tempGitRepo "src\SubBad.tsx"), "export const Sub = () => <span>$emojiFire sub</span>;`n", $utf8NoBom)
+    git -C $tempGitRepo add "src/SubBad.tsx" 2>&1 | Out-Null
+    $subDir = Join-Path $tempGitRepo "src"
+    $subCommitPayload = (@{ tool_input = @{ command = "git commit -m `"feat: sub`""; cwd = $subDir } } | ConvertTo-Json -Compress)
+    Test-Hook -TestName "27. Git Commit from Repo Subdirectory (cwd without -C) Blocked" `
+        -Payload $subCommitPayload `
+        -ExpectedDecision "deny" `
+        -RequiredHintTokens @("Rule-Lint Gate", "修復指引:", "UI_NO_EMOJI")
+} finally {
+    if (Test-Path -LiteralPath $tempGitRepo) {
+        try {
+            Get-ChildItem -LiteralPath $tempGitRepo -Recurse -Force -ErrorAction SilentlyContinue | ForEach-Object {
+                try { $_.Attributes = [System.IO.FileAttributes]::Normal } catch { $null = $_ }
+            }
+            [System.IO.Directory]::Delete($tempGitRepo, $true)
+        } catch {
+            # Ignore locked temp handles during cleanup
+            $null = $_
+        }
+    }
+}
+
 Write-Host ""
 Write-Host "Results: $Passed / $Total passed."
 if ($Passed -eq $Total) {

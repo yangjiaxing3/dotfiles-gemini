@@ -69,7 +69,7 @@ def collect_sources() -> tuple[dict[str, Path], list[dict]]:
 
 
 def is_link(path: Path) -> bool:
-    return path.is_junction() or path.is_symlink()
+    return bool(getattr(path, "is_junction", lambda: False)()) or path.is_symlink()
 
 
 def copy_skill(src_dir: Path, dst_dir: Path) -> int:
@@ -95,7 +95,7 @@ def copy_skill(src_dir: Path, dst_dir: Path) -> int:
 
 
 def remove_link(path: Path) -> None:
-    if path.is_junction():
+    if getattr(path, "is_junction", lambda: False)():
         os.rmdir(path)  # 只移除 Junction 本身，不碰目標內容
     else:
         path.unlink()

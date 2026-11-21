@@ -10,7 +10,7 @@ Ruflo Swarm V3 — 真實外部異質多模型 API 會審閘門 (C:/Users/Jiaxin
    - 第一順位（免 API 費）：預設清空子程序 `GEMINI_API_KEY` / `GOOGLE_API_KEY`，呼叫 `agy.exe --mode plan` 走 Antigravity Plan 訂閱額度。
    - 第二順位（備援）：僅當指定 `--force-gemini-api`（或 `FORCE_GEMINI_API=1`）、Plan 未登入或 Quota 不足失敗時，才退回 Windows DPAPI `GEMINI_API_KEY` 直打官方 API（最後再退 OpenRouter）。
 3. 其他外部 API 一律優先直打官方模型 API (`deepseek_direct`, `qwen_direct`, `typesafe`)；除非直連全部失敗，否則絕不走 OpenRouter API。
-4. Qwen 優先使用 `qwen4-max-preview`（DashScope 直連優先，支援 `qwen-max` 備援）；Phase B/C 額度不足時退回 Qwen，Phase D 主力 Qwen、備案 DeepSeek。
+4. Qwen 預設使用 `qwen4-max-preview`（相容 `qwen-4-max-preview` 別名映射，千問 Token Plan / DashScope 直連優先）；Phase B/C 額度不足時退回 Qwen，Phase D 主力 Qwen、備案 DeepSeek。
 
 用法：
   python scripts/multi_model_gate.py check-keys [--force-gemini-api]
@@ -117,8 +117,6 @@ def _resolve_agy_model(raw_model: str | None, default_model: str) -> str:
         "gemini-4-argon": "gemini-4-argon-medium",
         "gemini-4-hydrogen": "gemini-4-hydrogen-medium",
         "gemini-3.8-flash": "gemini-3.8-flash-low",
-        "gemini-2.5-flash": "gemini-3.8-flash-low",
-        "gemini-2.5-pro": "gemini-4-carbon-medium",
     }
     return aliases.get(mdl, mdl)
 
@@ -500,7 +498,13 @@ def build_endpoints(
         return ds_attempts
 
     qwen_key = env.get("QWEN_API_KEY") or env.get("DASHSCOPE_API_KEY") or ""
-    qwen_primary_model = (env.get("QWEN_MODEL_ID") or "qwen4-max-preview").strip() or "qwen4-max-preview"
+    raw_qwen_model = (env.get("QWEN_MODEL_ID") or "qwen4-max-preview").strip() or "qwen4-max-preview"
+    # 千問 Token Plan MaaS 端點模型 ID 為無連字號之 qwen4-max-preview（qwen-4-max-preview 會回 404）
+    qwen_alias_map = {
+        "qwen-4-max-preview": "qwen4-max-preview",
+        "qwen-4.0-max-preview": "qwen4.0-max-preview",
+    }
+    qwen_primary_model = qwen_alias_map.get(raw_qwen_model.lower(), raw_qwen_model)
 
     def _build_qwen_attempts() -> list[dict[str, Any]]:
         qw_attempts: list[dict[str, Any]] = []
@@ -570,7 +574,7 @@ def build_endpoints(
                     "model": mdl,
                     "provider": "xai_direct",
                 })
-        # Phase B 額度不足備案：qwen4-max-preview (DashScope 直連)
+        # Phase B 額度不足備案：qwen4-max-preview (Qwen API 直連)
         for q_att in _build_qwen_attempts():
             if q_att["provider"] == "qwen_direct":
                 attempts.append(q_att)
@@ -599,7 +603,7 @@ def build_endpoints(
                 "provider": "openrouter",
             })
         endpoints.append({
-            "role": "Agent C & D-Refactor (qwen-max)",
+            "role": "Agent C & D-Refactor (qwen4-max-preview)",
             "requested_model": qwen_primary_model,
             "attempts": d_attempts,
         })
@@ -620,10 +624,19 @@ def build_endpoints(
                 ),
                 "provider": "agy_cli_oauth",
             })
+            carbon_attempts.append({
+                "url": "agy-cli://oauth/plan",
+                "key": "",
+                "model": _resolve_agy_model(
+                    env.get("AGY_HYDROGEN_MODEL_ID") or env.get("GEMINI_HYDROGEN_MODEL_ID"),
+                    "gemini-4-hydrogen-medium",
+                ),
+                "provider": "agy_cli_oauth",
+            })
         if env.get("GEMINI_API_KEY"):
-            carbon_models = ["gemini-2.5-pro", "gemini-2.5-flash"]
+            carbon_models = ["gemini-4-carbon", "gemini-4-hydrogen"]
             cfg_carbon = env.get("GEMINI_CARBON_MODEL_ID") or env.get("GEMINI_ARGON_MODEL_ID") or env.get("GEMINI_MODEL_ID")
-            if cfg_carbon and cfg_carbon not in ("gemini-4-carbon", "gemini-4-argon", "gemini-4-hydrogen", *carbon_models):
+            if cfg_carbon and cfg_carbon not in carbon_models:
                 carbon_models.insert(0, cfg_carbon)
             for mdl in carbon_models:
                 carbon_attempts.append({
@@ -636,7 +649,7 @@ def build_endpoints(
             carbon_attempts.append({
                 "url": "https://openrouter.ai/api/v1/chat/completions",
                 "key": or_key,
-                "model": "google/gemini-2.5-pro",
+                "model": "qwen/qwen-max",
                 "provider": "openrouter",
             })
         endpoints.append({
@@ -658,9 +671,9 @@ def build_endpoints(
                 "provider": "agy_cli_oauth",
             })
         if env.get("GEMINI_API_KEY"):
-            hydrogen_models = ["gemini-2.5-flash", "gemini-2.5-pro"]
+            hydrogen_models = ["gemini-4-hydrogen", "gemini-4-carbon"]
             cfg_hydrogen = env.get("GEMINI_HYDROGEN_MODEL_ID")
-            if cfg_hydrogen and cfg_hydrogen not in ("gemini-4-hydrogen", "gemini-4-carbon", "gemini-4-argon", *hydrogen_models):
+            if cfg_hydrogen and cfg_hydrogen not in hydrogen_models:
                 hydrogen_models.insert(0, cfg_hydrogen)
             for mdl in hydrogen_models:
                 hydrogen_attempts.append({
@@ -669,7 +682,7 @@ def build_endpoints(
                     "model": mdl,
                     "provider": "gemini_direct",
                 })
-        # Phase C 額度不足備案：qwen4-max-preview (DashScope 直連)
+        # Phase C 額度不足備案：qwen4-max-preview (Qwen API 直連)
         for q_att in _build_qwen_attempts():
             if q_att["provider"] == "qwen_direct":
                 hydrogen_attempts.append(q_att)
@@ -677,7 +690,7 @@ def build_endpoints(
             hydrogen_attempts.append({
                 "url": "https://openrouter.ai/api/v1/chat/completions",
                 "key": or_key,
-                "model": "google/gemini-2.5-flash",
+                "model": "deepseek/deepseek-chat",
                 "provider": "openrouter",
             })
         endpoints.append({
@@ -691,7 +704,7 @@ def build_endpoints(
     gemini_decision_only = str(env.get("GEMINI_DECISION_API_ONLY") or "").strip().lower() in ("1", "true", "yes")
     gm_key = env.get("GEMINI_API_KEY") or ""
     gm_base = (env.get("GEMINI_BASE_URL") or "https://generativelanguage.googleapis.com/v1beta/openai").rstrip("/") + "/chat/completions"
-    gm_decision_model = env.get("GEMINI_DECISION_MODEL_ID") or "gemini-2.5-flash"
+    gm_decision_model = env.get("GEMINI_DECISION_MODEL_ID") or "gemini-3.8-flash"
 
     gm_decision_attempts: list[dict[str, Any]] = []
     if use_gemini_plan:
@@ -816,7 +829,7 @@ ROLE_BASE_SKILLS: dict[str, list[str]] = {
     "Agent Planner & Re-planner (gemini-4-carbon)": ["graphify", "writing-plans", "decisions-governance"],
     "Agent Executor & QA (gemini-4-hydrogen)": ["tdd-workflow", "ponytail", "verification-quality"],
     "Agent B Red Team (grok-4.7)": ["ponytail-review", "agency-engineering-code-reviewer"],
-    "Agent C & D-Refactor (qwen-max)": ["ponytail", "decisions-governance"],
+    "Agent C & D-Refactor (qwen4-max-preview)": ["ponytail", "decisions-governance"],
     "Agent Decision (jev-1.13.0)": ["ponytail-review", "verification-quality"],
 }
 
@@ -841,7 +854,7 @@ ROLE_TASK_SKILLS: dict[str, dict[str, list[str]]] = {
     },
     "Agent Executor & QA (gemini-4-hydrogen)": {
         "debug": ["agent-tester", "fixer-prompt"],
-        "data_analysis": ["d3-data-visualization", "xlsx", "building-data-apps"],
+        "data_analysis": ["d3-data-visualization", "xlsx", "agency-support-analytics-reporter"],
         "ui_frontend": ["impeccable", "frontend-design", "modern-web-guidance", "agent-desktop"],
         "backend_api": ["fastapi-templates", "agency-testing-api-tester"],
         "seo_content": ["agency-marketing-seo-specialist", "agency-taiwan-zh-hant-editor"],
@@ -857,9 +870,9 @@ ROLE_TASK_SKILLS: dict[str, dict[str, list[str]]] = {
         "ops_management": ["agency-testing-workflow-optimizer", "agency-support-analytics-reporter", "agency-taiwan-zh-hant-editor"],
         "simplify_refactor": ["ponytail-review", "security-audit", "stage-gate-review"],
     },
-    "Agent C & D-Refactor (qwen-max)": {
+    "Agent C & D-Refactor (qwen4-max-preview)": {
         "debug": ["fixer-prompt", "tdd-workflow"],
-        "data_analysis": ["xlsx", "building-data-apps", "agency-data-consolidation-agent"],
+        "data_analysis": ["xlsx", "agency-support-analytics-reporter", "agency-data-consolidation-agent"],
         "ui_frontend": ["impeccable", "agency-engineering-frontend-developer", "emil-design-eng", "modern-web-guidance"],
         "backend_api": ["fastapi-templates", "agent-dev-backend-api"],
         "seo_content": ["agency-marketing-growth-hacker", "agency-paid-media-creative-strategist", "agency-taiwan-zh-hant-editor"],
@@ -928,7 +941,7 @@ ROLE_TASK_SKILLS_US3C: dict[str, dict[str, list[str]]] = {
     },
     "Agent Executor & QA (gemini-4-hydrogen)": {
         "debug": ["agent-tester", "us3c-kiosk-driver-ops"],
-        "data_analysis": ["d3-data-visualization", "xlsx", "building-data-apps"],
+        "data_analysis": ["d3-data-visualization", "xlsx", "agency-support-analytics-reporter"],
         "ui_frontend": ["impeccable", "frontend-design", "modern-web-guidance", "agent-desktop"],
         "backend_api": ["us3c-imcheck-device-qc", "agency-testing-api-tester"],
         "seo_content": ["us3c-seo-loop", "agent-reach", "agency-taiwan-zh-hant-editor"],
@@ -944,9 +957,9 @@ ROLE_TASK_SKILLS_US3C: dict[str, dict[str, list[str]]] = {
         "ops_management": ["us3c-kiosk-driver-ops", "critical-stress-test", "agency-testing-workflow-optimizer"],
         "simplify_refactor": ["ponytail-review", "security-audit", "stage-gate-review"],
     },
-    "Agent C & D-Refactor (qwen-max)": {
+    "Agent C & D-Refactor (qwen4-max-preview)": {
         "debug": ["fixer-prompt", "tdd-workflow", "us3c-kiosk-driver-ops"],
-        "data_analysis": ["us3c-tradein-margin-pricing", "xlsx", "building-data-apps"],
+        "data_analysis": ["us3c-tradein-margin-pricing", "xlsx", "agency-support-analytics-reporter"],
         "ui_frontend": ["impeccable", "agency-engineering-frontend-developer", "emil-design-eng", "modern-web-guidance"],
         "backend_api": ["us3c-imcheck-device-qc", "fastapi-templates", "agent-dev-backend-api"],
         "seo_content": ["us3c-seo-loop", "skillorchestrator", "agency-taiwan-zh-hant-editor"],
@@ -1544,7 +1557,7 @@ def call_model(ep: dict[str, Any], prompt: str, plan: dict[str, Any] | None = No
                         model=att["model"],
                         system_prompt=system_prompt,
                         prompt=scoped_prompt,
-                        timeout=max(timeout, 180),
+                        timeout=max(timeout, 240),
                     )
                     result = {
                         "role": role,
@@ -1870,11 +1883,12 @@ def main():
         if args.git_diff or args.commit:
             try:
                 pathspecs = [str(p).strip() for p in (getattr(args, "paths", None) or []) if str(p).strip()]
+                exclude_specs = [":(exclude)*.tsbuildinfo"]
                 if args.commit:
-                    cmd = ["git", "show", "--format=", args.commit, "--", *pathspecs]
+                    cmd = ["git", "show", "--format=", args.commit, "--", *(pathspecs or ["."]), *exclude_specs]
                     diff_out = subprocess.check_output(cmd, text=True, encoding="utf-8", errors="ignore")
                 else:
-                    cmd = ["git", "diff", "HEAD", "--", *pathspecs]
+                    cmd = ["git", "diff", "HEAD", "--", *(pathspecs or ["."]), *exclude_specs]
                     diff_out = subprocess.check_output(cmd, text=True, encoding="utf-8", errors="ignore")
                 if diff_out.strip():
                     prompt_text += "\n\n【真實 Git Diff】（未含未追蹤檔案）:\n```diff\n" + diff_out + "\n```"

@@ -30,6 +30,7 @@ WEB_EXTS = frozenset({".tsx", ".jsx", ".html", ".vue"})
 PY_EXTS = frozenset({".py"})
 JS_EXTS = frozenset({".ts", ".tsx", ".js", ".jsx"})
 RELEVANT_EXTS = UI_EMOJI_EXTS | UI_JSX_EXTS | WEB_EXTS | PY_EXTS | JS_EXTS
+IGNORED_MIRROR_TOP_DIRS = frozenset({".agent", ".agents", ".cursor"})
 IGNORED_UNTRACKED_DIRS = frozenset(
     {
         ".venv",
@@ -37,6 +38,9 @@ IGNORED_UNTRACKED_DIRS = frozenset(
         "node_modules",
         "__pycache__",
         ".git",
+        ".agent",
+        ".agents",
+        ".cursor",
         "dist",
         "build",
         ".next",
@@ -174,6 +178,12 @@ class _JsxElement:
 
 def _normalize_rel_path(rel_path: str) -> Path:
     return Path(rel_path.replace("\\", "/"))
+
+
+def _is_ignored_mirror_path(rel_path: str) -> bool:
+    """檢查路徑是否位於受管技能／規則鏡像目錄（.agent/.agents/.cursor），避免被 diff 門禁誤報。"""
+    parts = _normalize_rel_path(rel_path).parts
+    return bool(parts and parts[0] in IGNORED_MIRROR_TOP_DIRS)
 
 
 def _is_test_file(rel_path: str) -> bool:
@@ -1189,7 +1199,9 @@ def _build_report(files_checked: int, violations: list[dict[str, Any]]) -> dict[
     }
 
 
-def lint_git_diff(diff_text: str, repo_root: Path | None = None) -> dict[str, Any]:
+def lint_git_diff(
+    diff_text: str, repo_root: Path | None = None, *, from_index: bool = False
+) -> dict[str, Any]:
     """解析 unified diff，僅檢查新增/修改行（+ 行號），並回傳標準 JSON 報告結構。"""
     root = repo_root if repo_root is not None else Path.cwd()
     file_added_lines = _parse_unified_diff(diff_text)
@@ -1197,13 +1209,20 @@ def lint_git_diff(diff_text: str, repo_root: Path | None = None) -> dict[str, An
     all_violations: list[dict[str, Any]] = []
 
     for rel_path, added_lines in file_added_lines.items():
-        if not added_lines:
+        if not added_lines or _is_ignored_mirror_path(rel_path):
             continue
-        target_path = root / _normalize_rel_path(rel_path)
-        if not target_path.is_file():
-            continue
+        if from_index:
+            git_rel = rel_path.replace("\\", "/")
+            idx_res = _run_git(root, ["show", f":{git_rel}"])
+            if idx_res.returncode != 0:
+                continue
+            content = idx_res.stdout
+        else:
+            target_path = root / _normalize_rel_path(rel_path)
+            if not target_path.is_file():
+                continue
+            content = target_path.read_text(encoding="utf-8", errors="replace")
         files_checked += 1
-        content = target_path.read_text(encoding="utf-8", errors="replace")
         all_violations.extend(
             lint_file_content(rel_path, content, added_lines=added_lines)
         )
@@ -1231,12 +1250,19 @@ def _collect_git_diff(
     repo_root: Path,
     commit: str | None,
     paths: list[str] | None,
+    staged: bool = False,
 ) -> str:
     pathspecs = [str(p).strip() for p in (paths or []) if str(p).strip()]
     if commit:
         res = _run_git(repo_root, ["show", "--format=", commit, "--", *pathspecs])
         if res.returncode != 0:
             raise RuntimeError(res.stderr.strip() or f"git show failed for {commit}")
+        return res.stdout
+
+    if staged:
+        res = _run_git(repo_root, ["diff", "--cached", "--", *pathspecs])
+        if res.returncode != 0:
+            raise RuntimeError(res.stderr.strip() or "git diff --cached failed")
         return res.stdout
 
     has_head = _run_git(repo_root, ["rev-parse", "--verify", "HEAD"]).returncode == 0
@@ -1247,12 +1273,12 @@ def _collect_git_diff(
         return res.stdout
 
     # 尚無任何 commit 的新倉庫，合併暫存區與工作區差異
-    staged = _run_git(repo_root, ["diff", "--cached", "--", *pathspecs])
-    unstaged = _run_git(repo_root, ["diff", "--", *pathspecs])
-    if staged.returncode != 0 or unstaged.returncode != 0:
-        err = staged.stderr.strip() or unstaged.stderr.strip() or "git diff failed"
+    staged_res = _run_git(repo_root, ["diff", "--cached", "--", *pathspecs])
+    unstaged_res = _run_git(repo_root, ["diff", "--", *pathspecs])
+    if staged_res.returncode != 0 or unstaged_res.returncode != 0:
+        err = staged_res.stderr.strip() or unstaged_res.stderr.strip() or "git diff failed"
         raise RuntimeError(err)
-    return "\n".join(part for part in (staged.stdout, unstaged.stdout) if part)
+    return "\n".join(part for part in (staged_res.stdout, unstaged_res.stdout) if part)
 
 
 def _collect_untracked_files(
@@ -1274,7 +1300,7 @@ def _collect_untracked_files(
         if not raw:
             continue
         rel_norm = raw.replace("\\", "/")
-        if rel_norm in already_checked:
+        if rel_norm in already_checked or _is_ignored_mirror_path(rel_norm):
             continue
         rel_path_obj = _normalize_rel_path(rel_norm)
         if any(part in IGNORED_UNTRACKED_DIRS for part in rel_path_obj.parts):
@@ -1326,6 +1352,11 @@ def main(argv: list[str] | None = None) -> int:
 
     parser.add_argument("--repo", default=".", help="--git-diff 模式使用的倉庫根目錄")
     parser.add_argument("--commit", default=None, help="--git-diff 模式指定檢查的 Commit Ref")
+    parser.add_argument(
+        "--staged",
+        action="store_true",
+        help="搭配 --git-diff 僅檢查暫存區 (staged) 修改，不納入未追蹤檔案",
+    )
     parser.add_argument("--paths", nargs="*", default=None, help="--git-diff 模式路徑過濾")
     parser.add_argument(
         "--filename",
@@ -1340,13 +1371,15 @@ def main(argv: list[str] | None = None) -> int:
     )
 
     args = parser.parse_args(argv)
+    if args.staged and not args.git_diff:
+        parser.error("--staged 必須搭配 --git-diff 使用")
 
     try:
         if args.git_diff:
             repo_root = Path(args.repo).resolve()
-            diff_text = _collect_git_diff(repo_root, args.commit, args.paths)
-            report = lint_git_diff(diff_text, repo_root=repo_root)
-            if not args.commit:
+            diff_text = _collect_git_diff(repo_root, args.commit, args.paths, staged=args.staged)
+            report = lint_git_diff(diff_text, repo_root=repo_root, from_index=bool(args.staged))
+            if not args.commit and not args.staged:
                 checked_set = {
                     p.replace("\\", "/")
                     for p, lines_set in _parse_unified_diff(diff_text).items()

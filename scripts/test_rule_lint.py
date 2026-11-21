@@ -526,6 +526,140 @@ class GitDiffAndCliTests(unittest.TestCase):
                 ["bad.py"],
             )
 
+    def test_git_diff_ignores_skill_mirror_dirs(self) -> None:
+        """--git-diff 應自動忽略 .agent/.agents/.cursor 技能鏡像目錄，但 --files 仍可顯式檢查。"""
+        script_path = SCRIPTS_DIR / "rule_lint.py"
+        with tempfile.TemporaryDirectory() as tmp:
+            repo = Path(tmp)
+            subprocess.run(["git", "-C", str(repo), "init"], check=True, capture_output=True)
+            subprocess.run(["git", "-C", str(repo), "config", "user.name", "Tester"], check=True)
+            subprocess.run(["git", "-C", str(repo), "config", "user.email", "t@example.com"], check=True)
+
+            agent_bad = repo / ".agent" / "skills" / "demo" / "Sample.tsx"
+            agent_bad.parent.mkdir(parents=True)
+            agent_bad.write_text("export const A = () => <span>ok</span>;\n", encoding="utf-8")
+            subprocess.run(["git", "-C", str(repo), "add", "."], check=True)
+            subprocess.run(["git", "-C", str(repo), "commit", "-m", "init"], check=True, capture_output=True)
+
+            # 修改已追蹤的 .agent 鏡像與新增未追蹤的 .agents / .cursor 鏡像（均含違規）
+            agent_bad.write_text("export const A = () => <span>🔥</span>;\n", encoding="utf-8")
+            agents_bad = repo / ".agents" / "skills" / "demo" / "helper.py"
+            agents_bad.parent.mkdir(parents=True)
+            agents_bad.write_text("def g():\n    try:\n        return 1\n    except ValueError:\n        pass\n", encoding="utf-8")
+            cursor_bad = repo / ".cursor" / "skills" / "demo" / "Btn.tsx"
+            cursor_bad.parent.mkdir(parents=True)
+            cursor_bad.write_text("export const B = () => <button><X /></button>;\n", encoding="utf-8")
+
+            res_mirrors_only = subprocess.run(
+                [sys.executable, str(script_path), "--git-diff", "--repo", str(repo), "--format", "json"],
+                capture_output=True,
+                text=True,
+                encoding="utf-8",
+                check=False,
+            )
+            self.assertEqual(res_mirrors_only.returncode, 0)
+            mirrors_data = json.loads(res_mirrors_only.stdout)
+            self.assertTrue(mirrors_data["passed"])
+            self.assertEqual(mirrors_data["files_checked"], 0)
+            self.assertEqual(mirrors_data["error_count"], 0)
+
+            # 業務碼 src/App.tsx 新增違規時仍須精準攔截
+            app_bad = repo / "src" / "App.tsx"
+            app_bad.parent.mkdir(parents=True)
+            app_bad.write_text("export const App = () => <span>🔥</span>;\n", encoding="utf-8")
+
+            res_biz = subprocess.run(
+                [sys.executable, str(script_path), "--git-diff", "--repo", str(repo), "--format", "json"],
+                capture_output=True,
+                text=True,
+                encoding="utf-8",
+                check=False,
+            )
+            self.assertEqual(res_biz.returncode, 1)
+            biz_data = json.loads(res_biz.stdout)
+            self.assertEqual(biz_data["files_checked"], 1)
+            self.assertEqual(biz_data["error_count"], 1)
+            self.assertEqual(biz_data["violations"][0]["file"], "src/App.tsx")
+
+            # 顯式 --files 檢查鏡像內單檔仍須保留檢查能力
+            res_explicit = subprocess.run(
+                [sys.executable, str(script_path), "--files", str(agents_bad), "--format", "json"],
+                capture_output=True,
+                text=True,
+                encoding="utf-8",
+                check=False,
+            )
+            self.assertEqual(res_explicit.returncode, 1)
+            self.assertEqual(json.loads(res_explicit.stdout)["violations"][0]["rule_id"], "NO_SILENT_CATCH")
+
+    def test_cli_git_diff_staged_only_checks_index(self) -> None:
+        """--git-diff --staged 僅檢查暫存區變更，忽略工作區未 staged 髒檔與未追蹤檔案。"""
+        script_path = SCRIPTS_DIR / "rule_lint.py"
+        with tempfile.TemporaryDirectory() as tmp:
+            repo = Path(tmp)
+            subprocess.run(["git", "-C", str(repo), "init"], check=True, capture_output=True)
+            subprocess.run(["git", "-C", str(repo), "config", "user.name", "Tester"], check=True)
+            subprocess.run(["git", "-C", str(repo), "config", "user.email", "t@example.com"], check=True)
+
+            (repo / "src").mkdir()
+            clean_py = repo / "src" / "clean.py"
+            unstaged_py = repo / "src" / "unstaged.py"
+            clean_py.write_text("x = 1\n", encoding="utf-8")
+            unstaged_py.write_text("y = 2\n", encoding="utf-8")
+            subprocess.run(["git", "-C", str(repo), "add", "."], check=True)
+            subprocess.run(["git", "-C", str(repo), "commit", "-m", "init"], check=True, capture_output=True)
+
+            # 工作區有未 staged 的違規修改與未追蹤違規檔案，暫存區只有乾淨修改
+            clean_py.write_text("x = 2\n", encoding="utf-8")
+            unstaged_py.write_text("def f():\n    try:\n        return 1\n    except ValueError:\n        pass\n", encoding="utf-8")
+            (repo / "src" / "untracked_bad.tsx").write_text("export const U = () => <span>🔥</span>;\n", encoding="utf-8")
+            subprocess.run(["git", "-C", str(repo), "add", "src/clean.py"], check=True)
+
+            res_staged_clean = subprocess.run(
+                [sys.executable, str(script_path), "--git-diff", "--staged", "--repo", str(repo), "--format", "json"],
+                capture_output=True,
+                text=True,
+                encoding="utf-8",
+                check=False,
+            )
+            self.assertEqual(res_staged_clean.returncode, 0)
+            staged_clean_data = json.loads(res_staged_clean.stdout)
+            self.assertTrue(staged_clean_data["passed"])
+            self.assertEqual(staged_clean_data["error_count"], 0)
+
+            # 將違規檔案 git add 進暫存區後，--staged 必須精準攔截該檔案
+            staged_bad = repo / "src" / "staged_bad.py"
+            staged_bad.write_text("def b():\n    try:\n        return 1\n    except RuntimeError:\n        pass\n", encoding="utf-8")
+            subprocess.run(["git", "-C", str(repo), "add", "src/staged_bad.py"], check=True)
+
+            res_staged_bad = subprocess.run(
+                [sys.executable, str(script_path), "--git-diff", "--staged", "--repo", str(repo), "--format", "json"],
+                capture_output=True,
+                text=True,
+                encoding="utf-8",
+                check=False,
+            )
+            self.assertEqual(res_staged_bad.returncode, 1)
+            staged_bad_data = json.loads(res_staged_bad.stdout)
+            self.assertEqual(staged_bad_data["error_count"], 1)
+            self.assertEqual(staged_bad_data["violations"][0]["file"], "src/staged_bad.py")
+            self.assertEqual(staged_bad_data["violations"][0]["rule_id"], "NO_SILENT_CATCH")
+
+            # 即使工作樹檔案後來被改乾淨但未重新 git add，--staged 仍須讀取 Index 並精準攔截
+            staged_bad.write_text("x = 1\n", encoding="utf-8")
+            res_staged_index = subprocess.run(
+                [sys.executable, str(script_path), "--git-diff", "--staged", "--repo", str(repo), "--format", "json"],
+                capture_output=True,
+                text=True,
+                encoding="utf-8",
+                check=False,
+            )
+            self.assertEqual(res_staged_index.returncode, 1)
+            staged_idx_data = json.loads(res_staged_index.stdout)
+            self.assertEqual(staged_idx_data["error_count"], 1)
+            self.assertEqual(staged_idx_data["violations"][0]["file"], "src/staged_bad.py")
+            self.assertEqual(staged_idx_data["violations"][0]["rule_id"], "NO_SILENT_CATCH")
+
     def test_self_dogfooding(self) -> None:
         """腳本本身與本測試檔案必須 0 違規通過 rule_lint 自我檢查。"""
         for filename in ("rule_lint.py", "test_rule_lint.py"):

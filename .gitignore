@@ -80,6 +80,11 @@ config/skills/**/.bsk*/
 config/skills/**/.bsk*/**
 config/skills/**/package-lock.json
 
+# 排除外部桌面軟體自動掛載之唯讀 NTFS Junction
+config/skills/ego-browser
+config/skills/ego-browser/
+config/skills/ego-browser/**
+
 # 機密與大型二進位 denylist（優先於上方放行）
 config/skills/**/.env
 config/skills/**/.env.*

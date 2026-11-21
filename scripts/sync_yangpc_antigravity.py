@@ -65,7 +65,13 @@ def copy_clean_tree(src_dir: Path, dst_dir: Path) -> int:
         return 0
     copied = 0
     for root, dirs, files in os.walk(src_dir):
-        dirs[:] = [d for d in dirs if d not in SKIP_DIRS and not d.startswith(".bsk")]
+        dirs[:] = [
+            d
+            for d in dirs
+            if d not in SKIP_DIRS
+            and not d.startswith(".bsk")
+            and not bool(getattr(Path(root) / d, "is_junction", lambda: False)())
+        ]
         rel_root = Path(root).relative_to(src_dir)
         target_root = dst_dir / rel_root
         for f in files:
@@ -198,7 +204,7 @@ def apply_bundle(source_dir: Path) -> dict:
     skill_dirs = []
     if cfg_skills.is_dir():
         for s_dir in sorted(cfg_skills.iterdir()):
-            if s_dir.is_dir() and not s_dir.is_junction() and (s_dir / "SKILL.md").is_file():
+            if s_dir.is_dir() and not bool(getattr(s_dir, "is_junction", lambda: False)()) and (s_dir / "SKILL.md").is_file():
                 skill_dirs.append(s_dir)
 
     # 同步 Cursor 全域規則 (~/.cursor/rules/*.mdc)

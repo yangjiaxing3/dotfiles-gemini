@@ -13,7 +13,7 @@ alwaysApply: true
    - 🛑 **嚴禁簡化**：3D 模擬器與空間幾何公式（Bin Packing／碰撞／矩陣／投影／DXF 解析與座標轉換）、財務與計價核算公式（租金精算／材積面積／折扣分攤／進位與邊界條件）、硬體／IoT 校準與跨庫 API 契約（攝影機 FOV、IoT 狀態、API 欄位與權限）。
 3. **[CRITICAL] 分級會審門禁與模型調度三鐵律**：
    - **日常快改（`< 15` 行、單檔微調或明確 Bug 修復）**：走輕量通道（免外部 API 會審），但必跑真實測試與 `python scripts/rule_lint.py --git-diff`（專案無 `scripts/` 用 `python ~/.gemini/scripts/rule_lint.py --git-diff`）。
-   - **架構簡化、移除抽象層／Wrapper、合併模組、刪除檔案或單次刪減 `> 15` 行**：強制執行 `python scripts/multi_model_gate.py review --prompt "..." --git-diff --output temp_multi_review.json`（無 `scripts/` 用 `python ~/.gemini/scripts/multi_model_gate.py ...`），嚴格遵守模型調度三鐵律：(1) **`grok` 走 Cursor Plan、其他模型優先 IDE 子代理額度**；(2) **Gemini 外部腳本預設清空子程序 `GEMINI_API_KEY`/`GOOGLE_API_KEY` 走 `agy.exe --mode plan`（Antigravity Plan Quota）→ 僅於明確指定或 Plan 失敗時退回 Windows DPAPI 官方直連（`deepseek_direct`, `qwen_direct`, `gemini_direct`, `typesafe`）→ OpenRouter 最後備援**；(3) **Qwen 固定 `qwen-max`**。
+   - **架構簡化、移除抽象層／Wrapper、合併模組、刪除檔案或單次刪減 `> 15` 行**：強制執行 `python scripts/multi_model_gate.py review --prompt "..." --git-diff --output temp_multi_review.json`（無 `scripts/` 用 `python ~/.gemini/scripts/multi_model_gate.py ...`），嚴格遵守模型調度三鐵律：(1) **`grok` 走 Cursor Plan、其他模型優先 IDE 子代理額度**；(2) **Gemini 外部腳本預設清空子程序 `GEMINI_API_KEY`/`GOOGLE_API_KEY` 走 `agy.exe --mode plan`（Antigravity Plan Quota）→ 僅於明確指定或 Plan 失敗時退回 Windows DPAPI 官方直連（`deepseek_direct`, `qwen_direct`, `gemini_direct`, `typesafe`）→ OpenRouter 最後備援**；(3) **Qwen 預設使用 `qwen4-max-preview`（備援 `qwen-max`）**。
 4. **確定性檢查與妥協留痕 (`shortcut:`)**：
    - 改碼後強制執行 `python scripts/rule_lint.py --git-diff`（無 `scripts/` 用 `~/.gemini/scripts/rule_lint.py --git-diff`）。
    - 無必要不寫註解，僅簡短解釋不變量「為什麼」。**嚴禁** `TODO:`／`FIXME:`／`HACK:`／`XXX:` 等逃生門註解；僅允許格式合規的 `// shortcut: <上限條件>, <何時該升級>`。

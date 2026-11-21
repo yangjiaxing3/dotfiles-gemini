@@ -29,7 +29,7 @@
    - **模型調度三鐵律（Plan & 子代理額度優先 → 官方直連 API → OpenRouter 最後備援）**：
      1. **`grok` 優先走 Cursor Plan；Gemini 外部腳本（`multi_model_gate.py`）預設第一順位清空子程序 `GEMINI_API_KEY`/`GOOGLE_API_KEY`，改走 `agy.exe --mode plan` 消耗 Antigravity Plan Quota；其他模型亦優先走 IDE 子代理額度**。
      2. **除非明確指示（`--force-gemini-api` / `FORCE_GEMINI_API=1`）或 Plan 未登入／Quota 不足失敗，才退回讀取 Windows DPAPI（`%LOCALAPPDATA%\US3C\Secrets\multi-model-keys.dpapi.xml` 或 `~/.gemini/secrets/multi_model_keys.env`）直打官方 API（`deepseek_direct`, `qwen_direct`, `gemini_direct`, `typesafe`）；直連全敗後才走 OpenRouter**。
-     3. **Qwen 模型一律固定使用 `qwen-max`**。
+     3. **Qwen 模型預設使用 `qwen4-max-preview`（備援 `qwen-max`）**。
    - 觸發門禁時執行 `python scripts/multi_model_gate.py review --prompt "..." --git-diff --output temp_multi_review.json`（專案無 `scripts/` 則用 `python ~/.gemini/scripts/multi_model_gate.py ...`），依下方 Ruflo Swarm V3 流程調動異質模型取得 `request_id` 與 `gate_verdict`；獲准後才執行最小變更。
 4. **確定性檢查與妥協留痕 (`shortcut:`)**：
    - 改碼後強制執行確定性檢查：`python scripts/rule_lint.py --git-diff`（專案無 `scripts/` 則用 `python ~/.gemini/scripts/rule_lint.py --git-diff`）。
@@ -77,8 +77,8 @@
 | **Phase 0：`🛡️ Agent 0` 邊界守門** | `deepseek-flash` | `gemini-4-carbon` | 檢查 `boundary-sentinel.md`、工作區邊界與 Storeasy 6 聯動 repo 白名單 |
 | **Phase A：`🧠 Agent Planner` 唯讀定計與重規劃** | `gemini-4-carbon` | `deepseek-flash` | 憑百萬 Context 查 `graphify` 與跨庫契約，產出附 **Re-plan Triggers** 的計畫；遇阻接手修補 |
 | **Phase B：`😈 Agent B` 紅隊 ＋ `⚖️ Decision`** | `grok-4.7` (Cursor Plan) | `jev-1.13.0` / Gemini Decision API | 紅隊挑戰 3D/財務/IoT 禁區與邊界容錯；結合量化分數（有 `TYPESAFE_API_KEY`/`jev` MCP 用 `jev-1.13`，否則走授權 `GPT Decision + local_rule_summary_v1`） |
-| **Phase C：`🛠️ Agent Executor` 執行與測試** | `gemini-4-hydrogen` / `deepseek-flash` | `qwen-max` (重構/Fixer) | 依計畫改碼、跑測試與 `agent-browser`/`agent-desktop` `@ref` 視覺 E2E；觸發 Re-plan Trigger 交回 `Carbon`；連 2 次同錯升 `qwen-max` |
-| **Phase D：`⚖️ Agent QA` 收斂終審與放行** | `qwen-max` | `deepseek-flash` / `grok-4.7` | 收斂 ADR 對照表、核對規格 100% 未縮水與 `rule_lint.py`/測試全過後放行 |
+| **Phase C：`🛠️ Agent Executor` 執行與測試** | `gemini-4-hydrogen` / `deepseek-flash` | `qwen4-max-preview`（備援 `qwen-max`） | 依計畫改碼、跑測試與 `agent-browser`/`agent-desktop` `@ref` 視覺 E2E；觸發 Re-plan Trigger 交回 `Carbon`；連 2 次同錯升 `qwen4-max-preview` |
+| **Phase D：`⚖️ Agent QA` 收斂終審與放行** | `qwen4-max-preview`（備援 `qwen-max`） | `deepseek-flash` / `grok-4.7` | 收斂 ADR 對照表、核對規格 100% 未縮水與 `rule_lint.py`/測試全過後放行 |
 
 - **動態技能綁定**：嚴禁跨角色共用籠統 Prompt。各角色專屬技能由 `multi_model_gate.py` 的 `plan_role_skill_matrix()`（整合 `skill_router.py` 與產業感知 `storeasy` vs `us3c`）動態組合，執行預覽指令檢視：
   `python scripts/multi_model_gate.py plan-skills --prompt "<任務描述>"`（專案無 `scripts/` 則用 `python ~/.gemini/scripts/multi_model_gate.py plan-skills --prompt "<任務描述>"`）。
@@ -94,5 +94,6 @@
 2. **確定性路由與 60/40 門禁 (`skill_router.py`)**：
    - 跨領域檢索執行 `python scripts/skill_router.py route "<使用者指令>"`（或 `~/.gemini/scripts/skill_router.py`）。
    - 新增／修改任何 `SKILL.md` 後須執行 `lint` 與 `eval`，確保 0 超標且 60/40 測試集 `Recall@3 >= 95%`。
-3. **[CRITICAL OVERRIDE] Plan 與 Mermaid 圖表強制 `/diagram-design` 協議**：
-   - 撰寫或更新任何 **Plan**（`implementation_plan.md`、`*_plan.md`、架構設計文件）且含 **Mermaid 圖、系統架構圖、資料流圖、時序圖、狀態機或 ER 圖**時，強制載入 `diagram-design` Skill（`.agents/skills/diagram-design/SKILL.md` 或 `~/.gemini/config/skills/diagram-design/SKILL.md`）：執行 `mermaid_extract.py` 遵守 `nodes <= 9, edges <= 12` 複雜度預算；除 Repo 名、路徑、資料表／欄位識別符與 API 路徑外，圖表內分區、節點、標籤與圖例一律繁體中文（`12px` `'Geist', 'Noto Sans TC'`）；產出 Editorial HTML + SVG + `@2x` PNG（Playwright `deviceScaleFactor: 2` 破快取檔名）並通過 `self_check.py` 後內嵌至 Plan（詳見 `~/.gemini/memory/diagram_design_for_plans_and_mermaid.md`）。
+3. **[CRITICAL OVERRIDE] README.md、Plan 與架構圖強制 `/diagram-design` 及人機雙讀協議**：
+   - **所有 repo 的 `README.md` 必須兼顧「一般人直覺易讀（業務定位、功能全景與操作入口）」與「AI Agent 精準契約導航」**，禁止寫成僅限 AI 閱讀之生硬指令集（AI 專用細節放 `AGENTS.md`，決策索引放 `DECISIONS.md`），且必須使用 `diagram-design` Skill 繪製系統／業務架構圖存放於 `docs/diagrams/` 並以相對路徑內嵌至 `README.md`。
+   - 凡撰寫或更新任何 repo 的 **`README.md`**、**Plan**（`implementation_plan.md`、`*_plan.md`、架構設計文件）或含 **Mermaid 圖、系統架構圖、資料流圖、時序圖、狀態機、ER 圖**之文件時，強制載入 `diagram-design` Skill（`.agents/skills/diagram-design/SKILL.md` 或 `~/.gemini/config/skills/diagram-design/SKILL.md`）：執行 `mermaid_extract.py` 遵守 `nodes <= 9, edges <= 12` 複雜度預算；除 Repo 名、路徑、資料表／欄位識別符與 API 路徑外，圖表內分區、節點、標籤與圖例一律繁體中文（`12px` `'Geist', 'Noto Sans TC'`）；產出 Editorial HTML + SVG + `@2x` PNG（Playwright `deviceScaleFactor: 2` 破快取檔名）並通過 `self_check.py` 與 `verify-geometry.py` 驗證後內嵌至文件（詳見 `~/.gemini/memory/diagram_design_for_plans_and_mermaid.md`）。

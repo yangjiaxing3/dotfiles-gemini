@@ -34,7 +34,7 @@ CANONICAL_AGENTS_SSOT_BLOCK = """<!-- BEGIN_LEAN_TRIAD_SSOT -->
 
 > 本區塊由 `scripts/sync_skills_to_cloud_repos.py` 與 `scripts/bootstrap_cursor_cloud.py` 自 `~/.gemini/GEMINI.md` 及 `.cursor/rules/engineering-core.mdc` 自動同步鎖定；請勿單獨手改，避免本機與雲端規則分裂。
 
-- **常駐底層引擎與受保護禁區**：`🧭 Graphify 圖譜導航` + `🧰 Role-Scoped Skills 動態掛載` + `✂️ Ponytail 極簡守則` 為常駐引擎；嚴禁簡化 3D 空間幾何／財務計價／硬體 IoT FOV 校準與跨庫 API 契約。刪減 `> 15` 行、移除抽象層／檔案或指定 `/multi-agent-mode` 時強制執行 `python3 scripts/multi_model_gate.py review --prompt "..." --git-diff --output temp_multi_review.json`（Plan／子代理優先 → 官方直連 → OpenRouter；Qwen 固定 `qwen-max`）。
+- **常駐底層引擎與受保護禁區**：`🧭 Graphify 圖譜導航` + `🧰 Role-Scoped Skills 動態掛載` + `✂️ Ponytail 極簡守則` 為常駐引擎；嚴禁簡化 3D 空間幾何／財務計價／硬體 IoT FOV 校準與跨庫 API 契約。刪減 `> 15` 行、移除抽象層／檔案或指定 `/multi-agent-mode` 時強制執行 `python3 scripts/multi_model_gate.py review --prompt "..." --git-diff --output temp_multi_review.json`（Plan／子代理優先 → 官方直連 → OpenRouter；Qwen 預設使用 `qwen4-max-preview`（備援 `qwen-max`））。
 - **確定性門禁與技能路由**：
   - 改碼後強制執行確定性檢查：`python3 scripts/rule_lint.py --git-diff`（自動攔截 UI Emoji、按鈕過長或缺 `aria-label`/`title`、`<input type="date" lang="en" />` 缺漏、`dangerouslySetInnerHTML`、`.skip`／空 `catch` 與 `TODO:`/`FIXME:`/`HACK:`/`XXX:` 藉口註解；僅允許 `// shortcut: <上限條件>, <何時該升級>`）。
   - 前端 UI 遵循 `stageshow` × `impeccable` × `design-taste-frontend`（詳見 `.cursor/rules/react-typescript.mdc`）；精簡按鈕時**嚴禁刪除**不可逆風險警告、交易計價／稅額條件、合規聲明與專案 SEO/GEO 訊號。
