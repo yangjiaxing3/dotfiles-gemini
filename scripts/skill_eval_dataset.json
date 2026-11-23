@@ -215,6 +215,155 @@
       "split": "test",
       "query": "幫我編輯 US3C 與 iMCheck 門市驗機的 SOP 教學檔，套用旁註 callout 標註配方",
       "expected_skills": ["sop-lesson"]
+    },
+    {
+      "id": "Q36",
+      "split": "train",
+      "query": "優化 Stream 2 舊換新計價公式與 SQLite Upsert 效能",
+      "files": ["services/auto_quote/calculator.py", "services/auto_quote/templates.py", "api/routers/auto_quote.py"],
+      "expected_skills": ["us3c-tradein-margin-pricing", "agency-testing-api-tester", "fastapi-templates"],
+      "acceptable_skills": ["bughunter", "ponytail", "security-audit", "agency-engineering-database-optimizer"],
+      "forbidden_skills": ["us3c-seo-loop", "stageshow", "impeccable", "agency-taiwan-threads-strategist"],
+      "expected_bughunter": ["hunt-sqli", "hunt-business-logic"]
+    },
+    {
+      "id": "Q37",
+      "split": "test",
+      "query": "修改 FastAPI LINE Webhook 驗簽機制與資料庫錯誤處理",
+      "files": ["api/routers/auto_quote.py", "services/line_oa/webhook.py"],
+      "expected_skills": ["security-audit", "bughunter", "fastapi-templates", "agency-testing-api-tester"],
+      "acceptable_skills": ["ponytail", "agency-engineering-database-optimizer"],
+      "forbidden_skills": ["agency-taiwan-line-oa-operator", "us3c-seo-loop", "stageshow", "design-taste-frontend"],
+      "expected_bughunter": ["hunt-auth-bypass", "hunt-exceptional-conditions", "hunt-llm-ai"]
+    },
+    {
+      "id": "Q38",
+      "split": "train",
+      "query": "修補二手報價查詢端點的 IDOR 越權讀取別人訂單與權限檢查",
+      "files": ["api/routers/auto_quote.py", "api/auth.py"],
+      "expected_skills": ["security-audit", "bughunter", "agency-testing-api-tester"],
+      "acceptable_skills": ["ponytail", "fastapi-templates", "us3c-tradein-margin-pricing"],
+      "forbidden_skills": ["us3c-seo-loop", "impeccable", "seo-audit"],
+      "expected_bughunter": ["hunt-idor", "hunt-auth-bypass"]
+    },
+    {
+      "id": "Q39",
+      "split": "test",
+      "query": "為 auto_quote 計價底限 0.2 與多項扣款公式補齊 pytest TDD 測試",
+      "files": ["tests/test_auto_quote_calculator.py", "services/auto_quote/calculator.py"],
+      "expected_skills": ["tdd-workflow", "agent-tester", "us3c-tradein-margin-pricing"],
+      "acceptable_skills": ["verification-quality", "ponytail"],
+      "forbidden_skills": ["us3c-seo-loop", "stageshow", "agency-design-ui-designer"],
+      "expected_bughunter": ["hunt-business-logic"]
+    },
+    {
+      "id": "Q40",
+      "split": "train",
+      "query": "調整 price_crawler SSRF 外部爬蟲 URL 抓取白名單與 Playwright 逾時重試",
+      "files": ["crawlers/pchome.py", "crawlers/http_client.py"],
+      "expected_skills": ["security-audit", "bughunter"],
+      "acceptable_skills": ["ponytail", "fixer-prompt", "agency-engineering-database-optimizer"],
+      "forbidden_skills": ["us3c-seo-loop", "impeccable", "agency-taiwan-zh-hant-editor"],
+      "expected_bughunter": ["hunt-ssrf"]
+    },
+    {
+      "id": "Q41",
+      "split": "train",
+      "query": "設計 MarginObsBoard Bento 版面樣式與互動按鈕，並避免 XSS HTML 拼接",
+      "files": ["frontend/src/components/MarginObsBoard.tsx", "frontend/src/styles/board.css"],
+      "expected_skills": ["stageshow", "impeccable", "modern-web-guidance", "web-design-guidelines"],
+      "acceptable_skills": ["design-taste-frontend", "bughunter", "react-best-practices", "us3c-tradein-margin-pricing"],
+      "forbidden_skills": ["fastapi-templates", "agency-engineering-database-optimizer"],
+      "expected_bughunter": ["hunt-xss"]
+    },
+    {
+      "id": "Q42",
+      "split": "test",
+      "query": "重構 React 表單 Dialog 與 WCAG 無障礙讀屏標籤，並保留 date input lang=en",
+      "files": ["src/components/QuoteForm.tsx", "src/components/Modal.css"],
+      "expected_skills": ["modern-web-guidance", "web-design-guidelines", "agency-testing-accessibility-auditor"],
+      "acceptable_skills": ["react-best-practices", "impeccable", "vercel-composition-patterns", "design-taste-frontend"],
+      "forbidden_skills": ["fastapi-templates", "seo-audit", "agency-engineering-database-optimizer"]
+    },
+    {
+      "id": "Q43",
+      "split": "train",
+      "query": "更新專案 README.md 架構圖、分區導航與 ELI5 說明，消除 AI 生成痕跡",
+      "files": ["README.md", "docs/architecture.md"],
+      "expected_skills": ["diagram-design", "humanizer", "decisions-governance"],
+      "acceptable_skills": ["humanizer-zh-tw", "eli5"],
+      "forbidden_skills": ["fastapi-templates", "tdd-workflow", "stageshow", "impeccable"],
+      "expected_bughunter": []
+    },
+    {
+      "id": "Q44",
+      "split": "test",
+      "query": "補充 DECISIONS.md 架構決策狀態為有效並檢查決策目錄規範",
+      "files": ["DECISIONS.md", "docs/decisions/0012-skill-router.md"],
+      "expected_skills": ["decisions-governance"],
+      "acceptable_skills": ["diagram-design", "ponytail"],
+      "forbidden_skills": ["fastapi-templates", "stageshow", "impeccable", "us3c-kiosk-driver-ops"],
+      "expected_bughunter": []
+    },
+    {
+      "id": "Q45",
+      "split": "train",
+      "query": "強化 XLSM 系統檢查樣板附件上傳解析、MIME 類型驗證與 Path Traversal 防護",
+      "files": ["api/routers/upload_template.py", "services/auto_quote/importer.py"],
+      "expected_skills": ["security-audit", "bughunter", "xlsx"],
+      "acceptable_skills": ["agency-sales-data-extraction-agent", "ponytail", "fastapi-templates", "agency-testing-api-tester"],
+      "forbidden_skills": ["us3c-seo-loop", "stageshow", "impeccable"],
+      "expected_bughunter": ["hunt-file-upload", "hunt-lfi"]
+    },
+    {
+      "id": "Q46",
+      "split": "test",
+      "query": "防範 LINE OA 客服 Prompt Injection 竄改系統提示詞並審查 multi_model_gate.py",
+      "files": ["services/line_oa/agent.py", "scripts/multi_model_gate.py"],
+      "expected_skills": ["security-audit", "bughunter"],
+      "acceptable_skills": ["ponytail", "fastapi-templates", "agent-arch-system-design"],
+      "forbidden_skills": ["us3c-seo-loop", "stageshow", "agency-taiwan-threads-strategist"],
+      "expected_bughunter": ["hunt-llm-ai"]
+    },
+    {
+      "id": "Q47",
+      "split": "train",
+      "query": "規劃跨模組重構架構設計圖與 ADR 知識圖譜依賴邊界",
+      "files": ["services/auto_quote/calculator.py", "api/routers/auto_quote.py"],
+      "role": "planner",
+      "expected_skills": ["graphify", "diagram-design", "agency-engineering-backend-architect", "agent-arch-system-design"],
+      "acceptable_skills": ["writing-plans", "ponytail", "decisions-governance", "ponytail-audit"],
+      "forbidden_skills": ["tdd-workflow", "agent-tester", "ponytail-review", "agency-engineering-code-reviewer"]
+    },
+    {
+      "id": "Q48",
+      "split": "train",
+      "query": "紅隊審查 FastAPI 權限驗證與程式碼可精簡片段，執行 BugHunter 滲透檢查",
+      "files": ["api/routers/auto_quote.py", "api/auth.py"],
+      "role": "red_team",
+      "expected_skills": ["bughunter", "security-audit", "ponytail-review", "agency-engineering-code-reviewer"],
+      "acceptable_skills": ["stage-gate-review", "agency-testing-api-tester"],
+      "forbidden_skills": ["fastapi-templates", "writing-plans", "tdd-workflow", "stageshow"]
+    },
+    {
+      "id": "Q49",
+      "split": "test",
+      "query": "實作 FastAPI 路由與 pytest 測試案例並極簡化變更",
+      "files": ["api/routers/auto_quote.py", "tests/test_auto_quote_api.py"],
+      "role": "executor",
+      "expected_skills": ["fastapi-templates", "tdd-workflow", "agent-tester", "ponytail"],
+      "acceptable_skills": ["verification-quality", "agency-testing-api-tester"],
+      "forbidden_skills": ["ponytail-review", "agency-engineering-code-reviewer", "writing-plans", "stageshow"]
+    },
+    {
+      "id": "Q50",
+      "split": "train",
+      "query": "繪製純靜態系統架構圖與資料流時序圖，不用寫互動式 D3 SVG 程式碼 (not for static diagrams)",
+      "files": ["docs/diagrams/architecture.md"],
+      "expected_skills": ["diagram-design", "decisions-governance"],
+      "acceptable_skills": ["ponytail"],
+      "forbidden_skills": ["d3-data-visualization", "stageshow", "fastapi-templates"],
+      "expected_bughunter": []
     }
   ]
 }

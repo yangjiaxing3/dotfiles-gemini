@@ -5,7 +5,7 @@ description: "Use when a milestone (e.g. P0-1) finishes and requires 3-role read
 
 # Stage-Gate Skeptical Review
 
-Read the canonical workflow at `.agents/workflows/stage-gate-review.md` completely before acting. Treat that file as the single source of truth.
+If the current project provides `.agent/workflows/stage-gate-review.md` (or `.agents/workflows/stage-gate-review.md`), read and follow it as the project override; otherwise follow the Execution Summary and Rules below directly.
 
 ## Trigger
 
@@ -27,6 +27,6 @@ Activate automatically when a staged development plan (P0-1/P0-2… phases or an
 - Do not run this workflow for single-file small fixes or hotfixes.
 
 ## ⚠️ Gotchas (避坑指南)
-- **雙軌資料表同步陷阱**：Storeasy 同時存在 `workdiv_orders` (`Order`) 與 `workdiv_quote_orders` (`QuoteOrder`)，更新狀態或退件原因時務必透過 `order_lifecycle_service` 同步雙表，禁止只改單邊。
-- **單位「式/一式」防呆**：工程報價若單位為「式」或「一式」，必須標記 `unit_mismatch=True` 並阻斷跨單位直接均價比較（交由 JEV 適格性引擎判別）。
+- **雙軌資料表同步陷阱 *(僅適用 Storeasy 系列專案)***：Storeasy 同時存在 `workdiv_orders` (`Order`) 與 `workdiv_quote_orders` (`QuoteOrder`)，更新狀態或退件原因時務必透過 `order_lifecycle_service` 同步雙表，禁止只改單邊。
+- **單位「式/一式」防呆 *(僅適用 Storeasy 系列專案)***：工程報價若單位為「式」或「一式」，必須標記 `unit_mismatch=True` 並阻斷跨單位直接均價比較（交由 JEV 適格性引擎判別）。
 - **原生日期選擇器語系**：前端所有 `<input type="date" />` 必須加上 `lang="en"`，避免繁中瀏覽器出現 `yyyy/月/dd` 破版。

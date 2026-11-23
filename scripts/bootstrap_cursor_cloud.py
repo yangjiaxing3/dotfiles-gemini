@@ -39,6 +39,9 @@ CANONICAL_AGENTS_SSOT_BLOCK = """<!-- BEGIN_LEAN_TRIAD_SSOT -->
   - 改碼後強制執行確定性檢查：`python3 scripts/rule_lint.py --git-diff`（自動攔截 UI Emoji、按鈕過長或缺 `aria-label`/`title`、`<input type="date" lang="en" />` 缺漏、`dangerouslySetInnerHTML`、`.skip`／空 `catch` 與 `TODO:`/`FIXME:`/`HACK:`/`XXX:` 藉口註解；僅允許 `// shortcut: <上限條件>, <何時該升級>`）。
   - 前端 UI 遵循 `stageshow` × `impeccable` × `design-taste-frontend`（詳見 `.cursor/rules/react-typescript.mdc`）；精簡按鈕時**嚴禁刪除**不可逆風險警告、交易計價／稅額條件、合規聲明與專案 SEO/GEO 訊號。
   - 檢索最佳技能：`python3 scripts/skill_router.py route "<任務描述>"` | 預覽技能矩陣：`python3 scripts/multi_model_gate.py plan-skills --prompt "<任務描述>"`
+- **任務結案白話總結與人機雙讀（`/eli5` × `/ponytail`）**：
+  - 改碼與簡化走 `/ponytail`；每次完整任務交付之「**完成項目**」與「**重點任務總結**」（含 PR 摘要、SOP、故障復盤及 `// shortcut:` 說明）一律套用 `/eli5`——先用白話講清對使用者的實際影響與前後差異，同時保留檔案路徑／API 原文供工程追溯，絕不在演算法／契約層稀釋精度。
+  - 更新 `README.md` 採雙層標準：上半部給人看（`/eli5` 白話定位與流程＋`/diagram-design` 中文架構圖 `nodes <= 9, edges <= 12`），下半部給 AI／工程師看（全庫真實結構、啟動測試指令與跨庫紅線；詳見 `~/.gemini/memory/eli5_ponytail_readme_dual_reading.md`）。
 - **收尾誠實揭露與極簡防重複回條（Final-Turn Compact Lean-Triad Receipt）**：
   - **🚫 嚴禁輸出回條之場景（防 Token 浪費）**：等待背景任務（`run_command` / `Shell` / subagent）完成的中繼進度回覆、純合併／部署狀態回報、澄清提問、純問答或閒聊，或**同一任務無新程式碼變更時，絕對禁止附上執行回條**。
   - **🚫 嚴禁正文與回條內容重複（Anti-Duplication Rule）**：回條每欄僅限填寫**關鍵字、路徑、行數或指令結果**（每欄 `<= 60` 字），**嚴禁把正文寫過的結論、PR 編號或背景敘述重抄進回條**；反之，已寫入回條的測試通過數、行數統計與略過邊界，正文**不再重複條列**。

@@ -86,6 +86,9 @@ This skill converts any SketchUp `.skp` model (up to SketchUp 2026+ format) or T
     - **b. 手拖車（藍色平台推車）**：約 **寬 100 cm × 深 110 cm (1000 × 1100 mm)**，放在入口旁凹槽左側。
     - **c. 電動升降梯（上下層專用）**：約 **寬 100 cm × 深 130 cm (1000 × 1300 mm)**，放在最靠近有上下層（雙 / 半）的位置（入口旁凹槽右側）。
     - **分合原則**：一般移除入口旁 2 個倉位將手拖車（左）與電動升降梯（右）併排放在一起；**但若雙層倉位距離入口太遠（> 5 m），電動升降梯就不跟手拖車放一起**（入口旁僅移除 1 倉放拖車，另於最靠近雙層倉位處移除 1 倉放電動升降梯）。
+13. **靠牆角落 L 型併倉、`<= 250 mm` 結構盲縫封板與冷藏單口端頭棧板大倉**：
+    - 緊鄰外牆或立柱且無礙消防前室、設備灣與鄰倉開門的靠柱死角，一律呼叫 `skp2cad.build_wall_corner_l_unit_geometry` 併入相鄰倉位升級為 **6 頂點 L 型大倉**（牆柱退 `20 mm`、鄰倉縫 `>= 10 mm`），同步將落入延伸臂之燈具／風扇／插座外移，並透過 `sub_boxes`（`unit_collision_rects`）參與碰撞、逃生與 Voronoi 計費。
+    - 牆柱間 `<= 250 mm` 極窄暗縫由現場封板封閉並登錄 `geom["sealed_crevices"]`（禁止為避暗縫將角落大倉退縮留垃圾縫）；冷藏／溫控區採單一出入口時，最深端頭可整合為 `2.3 m` 單層棧板大倉（`shared_side="BOTH"` 左右黃板 ＋ 中央 `>= 1400 mm` 對開雙門正對走道），並強制驗證「外部 `< 30 m`／單口深處 `< 40 m`」雙層逃生與送審揭露。
 
 ## Storeasy Fixed Cabinet Modules (`mm`)
 
@@ -146,6 +149,10 @@ This skill converts any SketchUp `.skp` model (up to SketchUp 2026+ format) or T
 - **上層定價三大盲點（嚴禁重犯）**：(1) 嚴禁拿「同才數（小底面積高單價下層 vs 大底面積上層）」算上下層價差 %，否則會多扣 `4%~5%` 材積級距差；(2) 嚴禁混入新北早期舊店（中和/三重湯城 `-26%~-33%`）拉低平均；(3) 嚴禁在原本較低的下層基準店單價上又套用放大折扣（雙重打折導致 `80 才+` 低於三重/淡水）。
 - **單線共壁與非標尺寸幻覺**：嚴禁畫 `0 mm` 單線共壁或自創 `1120` 深、`504` 寬等非標尺寸；差幾公分時必須向走道餘量借位或重組同排模數。
 - **共用倉配對違規**：單門（`772/922`）配共用倉時若 `w_main + 10 + w_shared >= 1492`，必須直接改做 `1492/1792` 雙門主倉。
+- **L 型角落大倉外接盒與頂點次序陷阱**：手寫凹 6 頂點 `custom_poly` 易造成 3D 扇形頂蓋切角破面或誤封走道；必須呼叫 `skp2cad.build_wall_corner_l_unit_geometry`（鎖定唯一內凹角為 `pts[0]` 並生成 `sub_boxes`），全場碰撞／逃生／Voronoi 須改用 `unit_collision_rects(u)`，且 `<= 250 mm` 牆柱暗縫須填入 `geom["sealed_crevices"]`。
 - **雙軌資料表同步陷阱**：Storeasy 同時存在 `workdiv_orders` (`Order`) 與 `workdiv_quote_orders` (`QuoteOrder`)，更新狀態或退件原因時務必透過 `order_lifecycle_service` 同步雙表，禁止只改單邊。
 - **單位「式/一式」防呆**：工程報價若單位為「式」或「一式」，必須標記 `unit_mismatch=True` 並阻斷跨單位直接均價比較（交由 JEV 適格性引擎判別）。
 - **原生日期選擇器語系**：前端所有 `<input type="date" />` 必須加上 `lang="en"`，避免繁中瀏覽器出現 `yyyy/月/dd` 破版。
+
+## Handoff to Expansion CEO Evaluation
+- 產出方案 A/B 之 `case_archive.json`、BOQ 與 3D HTML 後，若須結合 **1.0–2.5 km 四環商圈、真實租金＋管理費損平與 AI 副駕定案門禁** 產出最終決策報告，請載入專案技能 `storeasy-expansion-ceo-eval`（位於 `.agent/skills/storeasy-expansion-ceo-eval/SKILL.md`）。

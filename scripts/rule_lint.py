@@ -90,6 +90,15 @@ LANG_EN_ATTR_RE = re.compile(
     r"""\blang\s*=\s*(?:["']en["']|\{\s*["']en["']\s*\})"""
 )
 DANGEROUS_HTML_RE = re.compile(r"\bdangerouslySetInnerHTML\b")
+NT_DOLLAR_RE = re.compile(r"NT\$")
+SIDE_STRIPE_RE = re.compile(r"\bborder-l-[248]\b")
+BLOCKQUOTE_TAG_RE = re.compile(r"<blockquote\b", re.IGNORECASE)
+PLAIN_LOADING_JSX_RE = re.compile(
+    r">\s*[^<>{}\n]{0,12}(?:載入中|讀取中|資料載入|Loading\.\.\.)[^<>{}\n]{0,6}\s*<"
+)
+LOADING_COMPONENT_RE = re.compile(
+    r"Loader|Spinner|LoadingSvg|StatusStates|animate-spin|Skeleton"
+)
 
 JS_SKIP_RE = re.compile(
     r"\b(?:(?:it|test|describe)\.skip|x(?:it|test|describe))\s*\("
@@ -121,6 +130,18 @@ RULE_META: dict[str, tuple[str, str]] = {
     "UI_COMPACT_BUTTON": (
         "操作按鈕純靜態中文字數超過 6 字且不含受保護風險關鍵詞，過於冗長。",
         "操作按鈕文案精簡為 2～4 字動賓結構（如 新增批次、匯出報表、儲存資料），勿刪風險警告。",
+    ),
+    "UI_NO_NT_DOLLAR": (
+        "介面金額與格式化輸出禁止使用 NT$，全系統金額一律使用 $。",
+        "將 NT$ 改為 $（如 $1,000、$/坪、$/才）。",
+    ),
+    "UI_NO_SIDE_STRIPE": (
+        "禁止於卡片或面板使用側邊粗色條（border-l-2 / border-l-4 / border-l-8）。",
+        "改用單層實色卡片搭配 1px 細邊框與柔和語意底色。",
+    ),
+    "UI_NO_PLAIN_TEXT_LOADING": (
+        "禁止僅以純文字顯示載入狀態（如「載入中」），違反 DESIGN.md 載入元件規範。",
+        "改用 SectionLoader、LoadingSpinner 或 LoadingSvg 動態骨架元件。",
     ),
     "WEB_DATE_INPUT_LANG": (
         '日期輸入框 <input type="date"> 缺少 lang="en" 屬性，會導致跨語系瀏覽器顯示與輸入行為不一致。',
@@ -870,6 +891,36 @@ def _check_web_rules(
     return violations
 
 
+def _check_ui_design_system(
+    rel_path: str,
+    ext: str,
+    is_test: bool,
+    scan: _JsScanResult,
+    lines: list[str],
+    added_lines: set[int] | None,
+) -> list[dict[str, Any]]:
+    if is_test:
+        return []
+    violations: list[dict[str, Any]] = []
+    check_nt = ext in (JS_EXTS | UI_EMOJI_EXTS)
+    check_jsx = ext in UI_JSX_EXTS
+    if not (check_nt or check_jsx):
+        return []
+    for idx, line_text in enumerate(scan.comment_masked.splitlines(), start=1):
+        if added_lines is not None and idx not in added_lines:
+            continue
+        if check_nt and NT_DOLLAR_RE.search(line_text):
+            violations.append(_make_violation("UI_NO_NT_DOLLAR", rel_path, idx, lines))
+        if check_jsx:
+            if SIDE_STRIPE_RE.search(line_text) and not BLOCKQUOTE_TAG_RE.search(line_text):
+                violations.append(_make_violation("UI_NO_SIDE_STRIPE", rel_path, idx, lines))
+            if PLAIN_LOADING_JSX_RE.search(line_text) and not LOADING_COMPONENT_RE.search(line_text):
+                violations.append(
+                    _make_violation("UI_NO_PLAIN_TEXT_LOADING", rel_path, idx, lines)
+                )
+    return violations
+
+
 def _tokenize_python_safe(content: str) -> list[tokenize.TokenInfo]:
     tokens: list[tokenize.TokenInfo] = []
     try:
@@ -1090,6 +1141,7 @@ def lint_file_content(
     violations.extend(_check_ui_no_emoji(rel_path, ext, is_test, scan, lines, added_lines))
     violations.extend(_check_ui_buttons(rel_path, ext, is_test, scan, offsets, lines, added_lines))
     violations.extend(_check_web_rules(rel_path, ext, is_test, scan, offsets, lines, added_lines))
+    violations.extend(_check_ui_design_system(rel_path, ext, is_test, scan, lines, added_lines))
 
     if ext in JS_EXTS:
         if is_test:

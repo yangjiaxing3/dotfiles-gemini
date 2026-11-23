@@ -18,9 +18,12 @@ globs: ["**/*.tsx", "**/*.ts", "**/*.jsx"]
 
 ## UI 設計系統與極簡按鈕鐵律 (`stageshow` × `impeccable` × `design-taste-frontend`)
 
+- **動工前逐條核對 `DESIGN.md` 門禁（Pre-Edit Checklist）**：凡新增、重構或搬移任何頁面／元件前，強制先讀取本專案 `DESIGN.md` 並從使用者決策需求做減法（嚴禁「舊區塊直接搬家」），逐條核對：① 金額一律 `$`、禁 `NT$`；② 單層實色白卡、禁卡片套卡片與 `border-left > 1px`；③ 載入狀態必用 `SectionLoader`/`LoadingSpinner`/`LoadingSvg`，禁純文字載入；④ 禁渲染未接後端的假欄位、內部歸檔代碼或重複顯示相同指標；⑤ 關鍵欄位未填齊前禁亮誤導性綠燈或空 `—` 矩陣。
 - **三位一體優先序**：互動原件與動態轉場（`Collapse`, `Roll`, `Swap`, `Count`, `States`）優先用 `stageshow`，結合 `impeccable`（`Operate` 高密度工作台與 `/distill` 去蕪存菁，拒用裝飾性卡片與假數據）與 `design-taste-frontend`。
 - **嚴禁 UI Emoji（`rule_lint.py` 硬攔截）**：標題、KPI 卡、徽章、按鈕、表格、狀態列、空狀態與提示禁 Emoji，改用 [`pulsoicon-react`](https://github.com/CityPulso/PulsoIcon.git)（`PulsoIcon`）、`lucide-react` 或乾淨 SVG（`w-3.5 h-3.5` / `w-4 h-4`, `strokeWidth={1.75~2}`）。
 - **按鈕限 2～4 字或純 Icon（`rule_lint.py` 硬攔截）**：操作按鈕精簡為 2～4 字動賓結構（如 `新增批次`、`產生明細`、`匯出 Excel`、`顯示月薪`、`儲存資料`）或附 `title` 與 `aria-label` 之純 SVG Icon 按鈕；移除重複標題語意的冗餘說明與明顯慣例教學句。
+- **台灣中文直覺優先、禁工程／數學變數外洩**：台灣場勘、營運與管理介面一律以繁體中文直覺名稱為主標題與欄位標籤；英文名退居次要標籤或海外／新加坡總部報告專用。嚴禁於使用者介面暴露資料庫欄位名或學究數學代號（如 `s_ino`、`qss_ino`、`emp_code`、`I_res`、`I_biz`、`u_BE`、`Cash_peak`、`P_full`），原口徑定義收進 `title` 或正式匯出報告（無權限角色嚴禁於 `title`/`aria-*`/`data-*` 洩漏金額）。金額一律用 `$`、禁 `NT$`。
+- **Hallmark 反 AI Slop 結構底線**：禁止「卡片包卡片」（最多 1 層實色白卡，內部以細分隔線或輕底色區分）、禁止側邊粗色條（`border-left > 1px`）、禁止裝飾性紫藍漸層或預設毛玻璃、禁止無意義大寫／小字 Eyebrow、禁止 middle-dot（`·`/`・`）拼接中繼資訊字串；高密度工作台以 `SegmentedTabs` 與非對稱雙欄收斂首屏留白。
 - **【Protected Invariants 嚴禁誤刪】**：減字時絕對禁止刪除不可逆／高風險操作警告（如「刪除後無法復原」）、交易前提／計價／稅額條件、法律合規聲明與專案明訂之 SEO／GEO 核心訊號。
 
 ## B2B 網站與高密度工作台 4 層次動畫融合守則
@@ -33,7 +36,7 @@ globs: ["**/*.tsx", "**/*.ts", "**/*.jsx"]
 ## 前端安全與確定性門禁
 
 - 禁 `dangerouslySetInnerHTML`；防範 XSS / CSRF，不在前端存敏感資訊，Token 推薦 HttpOnly Cookie
-- 改碼後必跑 `python scripts/rule_lint.py --git-diff`（專案無 `scripts/` 則用 `python ~/.gemini/scripts/rule_lint.py --git-diff`）驗證 Emoji、按鈕字數與 A11y、`<input type="date" lang="en" />` 與 `dangerouslySetInnerHTML`
+- 改碼後必跑 `python scripts/rule_lint.py --git-diff`（專案無 `scripts/` 則用 `python ~/.gemini/scripts/rule_lint.py --git-diff`）驗證 Emoji、按鈕字數與 A11y、`NT$`、側邊粗色條（`border-l-2/4/8`）、純文字載入、`<input type="date" lang="en" />` 與 `dangerouslySetInnerHTML`
 
 ## 現代原生平台與無障礙（Modern Web Guidance）
 

@@ -24,6 +24,7 @@ import concurrent.futures
 import io
 import json
 import os
+import posixpath
 import re
 import shutil
 import subprocess
@@ -40,10 +41,27 @@ if str(SCRIPT_DIR) not in sys.path:
     sys.path.insert(0, str(SCRIPT_DIR))
 
 try:
-    from skill_router import SkillRouter, load_active_skills
+    from skill_router import (
+        FRONTEND_UI_SKILLS,
+        MAX_EXCLUDED_NOISE,
+        SEO_COPY_SKILLS,
+        SkillRouter,
+        extract_files_from_diff,
+        infer_file_signals,
+        load_active_skills,
+        normalize_role_key,
+        select_bughunter_skills,
+    )
 except Exception:
+    FRONTEND_UI_SKILLS = set()  # type: ignore
+    MAX_EXCLUDED_NOISE = 25  # type: ignore
+    SEO_COPY_SKILLS = set()  # type: ignore
     SkillRouter = None  # type: ignore
+    extract_files_from_diff = None  # type: ignore
+    infer_file_signals = None  # type: ignore
     load_active_skills = None  # type: ignore
+    normalize_role_key = None  # type: ignore
+    select_bughunter_skills = None  # type: ignore
 
 ENV_PATH = Path.home() / ".gemini" / "secrets" / "multi_model_keys.env"
 VAULT_PATH = Path(os.environ.get(
@@ -113,12 +131,43 @@ def _resolve_agy_model(raw_model: str | None, default_model: str) -> str:
     if not mdl:
         return default_model
     aliases = {
-        "gemini-4-carbon": "gemini-4-carbon-medium",
-        "gemini-4-argon": "gemini-4-argon-medium",
-        "gemini-4-hydrogen": "gemini-4-hydrogen-medium",
+        "gemini-4-neon": "gemini-4-neon-xhigh",
+        "gemini-4-carbon": "gemini-4-carbon-high",
+        "gemini-4-argon": "gemini-4-argon-high",
+        "gemini-4-hydrogen": "gemini-4-hydrogen-xhigh",
         "gemini-3.8-flash": "gemini-3.8-flash-low",
     }
     return aliases.get(mdl, mdl)
+
+
+_NEON_FORCE_HINTS = (
+    "架構", "演算法", "重構", "跨庫", "資安", "計價",
+    "3d", "bin packing", "dxf", "fov", "architecture", "algorithm",
+    "refactor", "security", "pricing", "financial", "migration", "neon",
+)
+
+_CARBON_LIGHT_PLANNER_HINTS = (
+    "typo", "錯字", "文案", "readme", "文件", "docs", "comment", "註解", "carbon",
+)
+
+
+def _select_planner_agy_models(prompt: str, env: dict[str, str]) -> tuple[str, str]:
+    """預設以 gemini-4-neon-xhigh 任 Planner 協調者；僅在純輕量／覆寫情境切換為 gemini-4-carbon-high。"""
+    explicit = (
+        env.get("AGY_PLANNER_MODEL_ID")
+        or env.get("GEMINI_PLANNER_MODEL_ID")
+        or env.get("AGY_CARBON_MODEL_ID")
+        or env.get("GEMINI_CARBON_MODEL_ID")
+        or ""
+    ).strip()
+    if explicit:
+        primary = _resolve_agy_model(explicit, "gemini-4-neon-xhigh")
+        fallback = "gemini-4-carbon-high" if "neon" in primary else "gemini-4-neon-xhigh"
+        return primary, fallback
+    low = (prompt or "").lower()
+    if any(kw in low for kw in _CARBON_LIGHT_PLANNER_HINTS) and not any(kw in low for kw in _NEON_FORCE_HINTS):
+        return "gemini-4-carbon-high", "gemini-4-neon-xhigh"
+    return "gemini-4-neon-xhigh", "gemini-4-carbon-high"
 
 
 def _parse_agy_json_output(stdout: str) -> dict[str, Any]:
@@ -162,7 +211,13 @@ def _call_agy_cli(
 
     # Windows CreateProcessW 命令列上限為 32,767 字元，壓縮 Diff 避免 WinError 206
     safe_prompt = _cap_prompt_for_model(prompt, 20000)
-    full_prompt = f"{system_prompt}\n\n---\n\n{safe_prompt}" if system_prompt.strip() else safe_prompt
+    headless_guard = (
+        "【HEADLESS 唯讀審查限制】你目前處於無頭純文字會審模式，"
+        "嚴禁呼叫任何終端機命令（command）、寫入檔案、或嘗試建立 implementation_plan.md 等外部檔案；"
+        "請僅針對下方提供的 Git Diff 統計與內容直接輸出文字審查結論。"
+    )
+    sys_block = f"{headless_guard}\n\n{system_prompt}".strip() if system_prompt.strip() else headless_guard
+    full_prompt = f"{sys_block}\n\n---\n\n{safe_prompt}"
     cmd = [
         str(resolve_agy_cli_path()),
         "--mode",
@@ -218,11 +273,11 @@ def _call_grok_cli(
     model: str,
     system_prompt: str,
     prompt: str,
-    timeout: int = 150,
+    timeout: int = 200,
     json_schema: dict[str, Any] | None = None,
     cwd: str | None = None,
 ) -> str:
-    """呼叫本機 grok.exe，強制移除子程序 XAI_API_KEY 以使用 ~/.grok/auth.json 訂閱額度。"""
+    """呼叫本機 grok.exe，強制移除子程序 XAI_API_KEY 以使用 ~/.grok/auth.json 訂閱額度，並鎖定暫存 cwd 隔離專案。"""
     if not is_grok_cli_logged_in():
         raise RuntimeError("Grok CLI OAuth (~/.grok/auth.json) not logged in")
 
@@ -230,7 +285,14 @@ def _call_grok_cli(
     child_env.pop("XAI_API_KEY", None)
     child_env.pop("GROK_API_KEY", None)
 
-    full_prompt = f"{system_prompt}\n\n---\n\n{prompt}" if system_prompt.strip() else prompt
+    effective_cwd = str(cwd) if cwd else tempfile.gettempdir()
+    grok_guard = (
+        "【唯讀紅隊限制】禁止呼叫任何 shell/讀檔/改檔工具，"
+        "請僅針對下方提供的 --stat 與精簡 Diff 內容直接輸出紅隊審查結論。"
+    )
+    sys_block = f"{grok_guard}\n\n{system_prompt}".strip() if system_prompt.strip() else grok_guard
+    safe_prompt = _cap_prompt_for_model(prompt, 25000)
+    full_prompt = f"{sys_block}\n\n---\n\n{safe_prompt}"
     with tempfile.NamedTemporaryFile(mode="w", suffix=".txt", encoding="utf-8", delete=False) as tf:
         tf.write(full_prompt)
         prompt_file_path = tf.name
@@ -242,12 +304,12 @@ def _call_grok_cli(
             "plan",
             "--no-subagents",
             "--max-turns",
-            "6",
+            "2",
             "-m",
             model or "grok-4.7",
+            "--cwd",
+            effective_cwd,
         ]
-        if cwd:
-            cmd.extend(["--cwd", str(cwd)])
         if json_schema is not None:
             cmd.extend(["--json-schema", json.dumps(json_schema, ensure_ascii=False)])
         # 以暫存檔傳遞 prompt，繞過 Windows CreateProcessW 32,767 字元命令列上限
@@ -256,6 +318,7 @@ def _call_grok_cli(
         res = subprocess.run(
             cmd,
             env=child_env,
+            cwd=effective_cwd,
             capture_output=True,
             text=True,
             encoding="utf-8",
@@ -418,16 +481,22 @@ def read_secret_text() -> str:
 
 
 
-def load_secret_env() -> dict[str, str]:
+def parse_secret_text(secret_text: str) -> dict[str, str]:
+    """從純文字 KEY=VALUE 設定解析金鑰字典，跳過註解與不合法行。"""
     env: dict[str, str] = {}
-    secret_text = read_secret_text()
-    if secret_text:
-        for raw_line in secret_text.splitlines():
-            line = raw_line.strip()
-            if not line or line.startswith("#") or "=" not in line:
-                continue
-            k, v = line.split("=", 1)
-            env[k.strip()] = v.strip().strip("\"'")
+    if not secret_text:
+        return env
+    for raw_line in secret_text.splitlines():
+        line = raw_line.strip()
+        if not line or line.startswith("#") or "=" not in line:
+            continue
+        k, v = line.split("=", 1)
+        env[k.strip()] = v.strip().strip("\"'")
+    return env
+
+
+def load_secret_env() -> dict[str, str]:
+    env = parse_secret_text(read_secret_text())
     for k in (
         "OPENROUTER_API_KEY",
         "DEEPSEEK_API_KEY",
@@ -467,6 +536,7 @@ def build_endpoints(
     env: dict[str, str],
     include_grok_api: bool = False,
     force_gemini_api: bool = False,
+    prompt: str = "",
 ) -> list[dict[str, Any]]:
     or_key = env.get("OPENROUTER_API_KEY", "")
     env_force_gm = str(env.get("FORCE_GEMINI_API") or os.environ.get("FORCE_GEMINI_API") or "").strip().lower() in ("1", "true", "yes")
@@ -497,10 +567,13 @@ def build_endpoints(
             })
         return ds_attempts
 
-    qwen_key = env.get("QWEN_API_KEY") or env.get("DASHSCOPE_API_KEY") or ""
-    raw_qwen_model = (env.get("QWEN_MODEL_ID") or "qwen4-max-preview").strip() or "qwen4-max-preview"
-    # 千問 Token Plan MaaS 端點模型 ID 為無連字號之 qwen4-max-preview（qwen-4-max-preview 會回 404）
+    maas_key = (env.get("QWEN_API_KEY") or "").strip()
+    dash_key = (env.get("DASHSCOPE_API_KEY") or "").strip()
+    qwen_key = maas_key or dash_key
+    raw_qwen_model = (env.get("QWEN_MODEL_ID") or "qwen4-max").strip() or "qwen4-max"
+    # 千問 Token Plan MaaS 端點模型 ID 為無連字號之 qwen4-max / qwen4-max-preview（qwen-max / qwen-4-max 會回 404）
     qwen_alias_map = {
+        "qwen-4-max": "qwen4-max",
         "qwen-4-max-preview": "qwen4-max-preview",
         "qwen-4.0-max-preview": "qwen4.0-max-preview",
     }
@@ -508,21 +581,37 @@ def build_endpoints(
 
     def _build_qwen_attempts() -> list[dict[str, Any]]:
         qw_attempts: list[dict[str, Any]] = []
-        if qwen_key:
-            bases = [
-                "https://token-plan.maas.qianwenaiapi.com/compatible-mode/v1",
+        maas_base = (env.get("QWEN_BASE_URL") or "https://token-plan.maas.qianwenaiapi.com/compatible-mode/v1").rstrip("/")
+        dash_cfg_base = (env.get("DASHSCOPE_BASE_URL") or "").rstrip("/")
+
+        # 1) QWEN_API_KEY 一律只送 MaaS 端點 (QWEN_BASE_URL)，防止非 sk-sp- 自訂金鑰誤送阿里雲公網 DashScope
+        if maas_key:
+            maas_models = []
+            for cand_m in (qwen_primary_model, "qwen4-max-preview"):
+                if cand_m and cand_m != "qwen-max" and cand_m not in maas_models:
+                    maas_models.append(cand_m)
+            for mdl in maas_models:
+                qw_attempts.append({
+                    "url": maas_base + "/chat/completions",
+                    "key": maas_key,
+                    "model": mdl,
+                    "provider": "qwen_direct",
+                })
+
+        # 2) 真實非 sk-sp- 之 DashScope 金鑰才送 Alibaba Cloud DashScope 端點
+        if dash_key and not dash_key.startswith("sk-sp-"):
+            dash_bases = [
                 "https://dashscope.aliyuncs.com/compatible-mode/v1",
                 "https://dashscope-intl.aliyuncs.com/compatible-mode/v1",
             ]
-            cfg_base = (env.get("QWEN_BASE_URL") or env.get("DASHSCOPE_BASE_URL") or "").rstrip("/")
-            if cfg_base and cfg_base not in bases:
-                bases.insert(0, cfg_base)
-            qw_models = [qwen_primary_model] if qwen_primary_model == "qwen-max" else [qwen_primary_model, "qwen-max"]
-            for mdl in qw_models:
-                for base in bases:
+            if dash_cfg_base and dash_cfg_base not in dash_bases:
+                dash_bases.insert(0, dash_cfg_base)
+            dash_models = [qwen_primary_model] if qwen_primary_model == "qwen-max" else [qwen_primary_model, "qwen-max"]
+            for mdl in dash_models:
+                for base in dash_bases:
                     qw_attempts.append({
                         "url": base.rstrip("/") + "/chat/completions",
-                        "key": qwen_key,
+                        "key": dash_key,
                         "model": mdl,
                         "provider": "qwen_direct",
                     })
@@ -543,7 +632,7 @@ def build_endpoints(
             "attempts": _build_deepseek_attempts(),
         })
 
-    # 2. Grok (Agent B Red Team / Agent E-Quality) — 預設直接走 Cursor Plan 內建額度；若指定 --include-grok-api，依序走 grok.exe OAuth -> XAI_API_KEY -> Qwen 備案 -> OpenRouter
+    # 2. Grok (Agent B Red Team / Agent E-Quality) — 預設委派由 IDE 內建 Grok 子代理；若指定 --include-grok-api，依序走 grok.exe OAuth -> XAI_API_KEY -> OpenRouter（不跨退無關 Qwen）
     if not include_grok_api:
         endpoints.append({
             "role": "Agent B Red Team (grok-4.7)",
@@ -556,7 +645,7 @@ def build_endpoints(
                 "provider": "cursor_plan",
             }],
         })
-    elif is_grok_cli_logged_in() or env.get("XAI_API_KEY") or qwen_key or or_key:
+    elif is_grok_cli_logged_in() or env.get("XAI_API_KEY") or or_key:
         attempts = []
         if is_grok_cli_logged_in():
             attempts.append({
@@ -574,10 +663,6 @@ def build_endpoints(
                     "model": mdl,
                     "provider": "xai_direct",
                 })
-        # Phase B 額度不足備案：qwen4-max-preview (Qwen API 直連)
-        for q_att in _build_qwen_attempts():
-            if q_att["provider"] == "qwen_direct":
-                attempts.append(q_att)
         if or_key:
             attempts.append({
                 "url": "https://openrouter.ai/api/v1/chat/completions",
@@ -608,31 +693,22 @@ def build_endpoints(
             "attempts": d_attempts,
         })
 
-    # 4. Gemini 官方雙核閉環 (Carbon 唯讀定計/重規劃 vs Hydrogen 執行/套件/測試) — Antigravity Plan 額度 (agy.exe) 第一優先；除非指定強制走 API 或 Plan 額度失敗才退回 GEMINI_API_KEY，最後退 OpenRouter
+    # 4. Gemini 官方雙核閉環 (Neon XHigh / Carbon High 唯讀定計/重規劃 vs Hydrogen XHigh 執行/套件/測試) — Antigravity Plan 額度 (agy.exe) 第一優先；除非指定強制走 API 或 Plan 額度失敗才退回 GEMINI_API_KEY，最後退 OpenRouter
     if use_gemini_plan or env.get("GEMINI_API_KEY") or or_key:
         gm_base = (env.get("GEMINI_BASE_URL") or "https://generativelanguage.googleapis.com/v1beta/openai").rstrip("/") + "/chat/completions"
 
-        # 4a. Gemini Carbon (Phase A 唯讀探索定計 & 遇阻修補重規劃)
+        # 4a. Gemini Planner (Phase A 唯讀探索定計 & 遇阻修補重規劃：依情境選 Neon XHigh 或 Carbon High)
+        planner_primary, planner_fallback = _select_planner_agy_models(prompt, env)
         carbon_attempts = []
         if use_gemini_plan:
-            carbon_attempts.append({
-                "url": "agy-cli://oauth/plan",
-                "key": "",
-                "model": _resolve_agy_model(
-                    env.get("AGY_CARBON_MODEL_ID") or env.get("GEMINI_CARBON_MODEL_ID"),
-                    "gemini-4-carbon-medium",
-                ),
-                "provider": "agy_cli_oauth",
-            })
-            carbon_attempts.append({
-                "url": "agy-cli://oauth/plan",
-                "key": "",
-                "model": _resolve_agy_model(
-                    env.get("AGY_HYDROGEN_MODEL_ID") or env.get("GEMINI_HYDROGEN_MODEL_ID"),
-                    "gemini-4-hydrogen-medium",
-                ),
-                "provider": "agy_cli_oauth",
-            })
+            for agy_mdl in (planner_primary, planner_fallback, "gemini-4-hydrogen-xhigh"):
+                if not any(a["provider"] == "agy_cli_oauth" and a["model"] == agy_mdl for a in carbon_attempts):
+                    carbon_attempts.append({
+                        "url": "agy-cli://oauth/plan",
+                        "key": "",
+                        "model": agy_mdl,
+                        "provider": "agy_cli_oauth",
+                    })
         if env.get("GEMINI_API_KEY"):
             carbon_models = ["gemini-4-carbon", "gemini-4-hydrogen"]
             cfg_carbon = env.get("GEMINI_CARBON_MODEL_ID") or env.get("GEMINI_ARGON_MODEL_ID") or env.get("GEMINI_MODEL_ID")
@@ -652,24 +728,39 @@ def build_endpoints(
                 "model": "qwen/qwen-max",
                 "provider": "openrouter",
             })
+        default_planner_req = planner_primary if use_gemini_plan else "gemini-4-carbon"
+        explicit_planner_req = (
+            env.get("AGY_PLANNER_MODEL_ID")
+            or env.get("GEMINI_PLANNER_MODEL_ID")
+            or env.get("GEMINI_CARBON_MODEL_ID")
+            or env.get("GEMINI_MODEL_ID")
+        )
         endpoints.append({
             "role": "Agent Planner & Re-planner (gemini-4-carbon)",
-            "requested_model": (lambda m: "gemini-4-carbon" if m in ("", "gemini-4-argon", None) else m)(env.get("GEMINI_CARBON_MODEL_ID") or env.get("GEMINI_MODEL_ID")),
+            "requested_model": (lambda m: default_planner_req if m in ("", "gemini-4-argon", None) else m)(explicit_planner_req),
             "attempts": carbon_attempts,
         })
 
-        # 4b. Gemini Hydrogen (Phase C 改碼/更新套件/執行測試 & 視覺 E2E)
+        # 4b. Gemini Hydrogen Extra High (Phase C 改碼/更新套件/執行測試 & 視覺 E2E)
+        exec_primary = _resolve_agy_model(
+            env.get("AGY_HYDROGEN_MODEL_ID") or env.get("GEMINI_HYDROGEN_MODEL_ID"),
+            "gemini-4-hydrogen-xhigh",
+        )
         hydrogen_attempts = []
         if use_gemini_plan:
             hydrogen_attempts.append({
                 "url": "agy-cli://oauth/plan",
                 "key": "",
-                "model": _resolve_agy_model(
-                    env.get("AGY_HYDROGEN_MODEL_ID") or env.get("GEMINI_HYDROGEN_MODEL_ID"),
-                    "gemini-4-hydrogen-medium",
-                ),
+                "model": exec_primary,
                 "provider": "agy_cli_oauth",
             })
+            if exec_primary != "gemini-4-hydrogen-high":
+                hydrogen_attempts.append({
+                    "url": "agy-cli://oauth/plan",
+                    "key": "",
+                    "model": "gemini-4-hydrogen-high",
+                    "provider": "agy_cli_oauth",
+                })
         if env.get("GEMINI_API_KEY"):
             hydrogen_models = ["gemini-4-hydrogen", "gemini-4-carbon"]
             cfg_hydrogen = env.get("GEMINI_HYDROGEN_MODEL_ID")
@@ -695,7 +786,7 @@ def build_endpoints(
             })
         endpoints.append({
             "role": "Agent Executor & QA (gemini-4-hydrogen)",
-            "requested_model": env.get("GEMINI_HYDROGEN_MODEL_ID") or "gemini-4-hydrogen",
+            "requested_model": exec_primary if use_gemini_plan else (env.get("GEMINI_HYDROGEN_MODEL_ID") or "gemini-4-hydrogen"),
             "attempts": hydrogen_attempts,
         })
 
@@ -759,8 +850,16 @@ def build_endpoints(
     return endpoints
 
 
-def _send_chat_request(url: str, key: str, model: str, system_prompt: str, prompt: str, timeout: int) -> dict[str, Any]:
-    payload = {
+def _send_chat_request(
+    url: str,
+    key: str,
+    model: str,
+    system_prompt: str,
+    prompt: str,
+    timeout: int,
+    extra_payload: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    payload: dict[str, Any] = {
         "model": model,
         "messages": [
             {"role": "system", "content": system_prompt},
@@ -779,8 +878,16 @@ def _send_chat_request(url: str, key: str, model: str, system_prompt: str, promp
     if url.startswith("https://api.deepseek.com/"):
         payload["max_tokens"] = 16384
         payload["thinking"] = {"type": "disabled"}
-    if "generativelanguage.googleapis.com" in url or "dashscope" in url or "token-plan" in url:
+    if "generativelanguage.googleapis.com" in url:
         payload["max_tokens"] = 8192
+    if "dashscope" in url or "token-plan" in url:
+        # 確保 Qwen 保留足夠輸出額度給正文（至少 10K），防止 thinking token 吞光預算導致 content 為空
+        payload["max_tokens"] = 12288
+        payload["thinking_budget"] = 2048
+    if extra_payload:
+        payload.update(extra_payload)
+        if payload.get("enable_thinking") is False:
+            payload.pop("thinking_budget", None)
 
     def _post(body_obj: dict[str, Any]) -> dict[str, Any]:
         req = urllib.request.Request(
@@ -815,22 +922,31 @@ def _send_chat_request(url: str, key: str, model: str, system_prompt: str, promp
 
 TASK_DOMAIN_KEYWORDS: dict[str, tuple[str, ...]] = {
     "debug": ("bug", "fix", "error", "crash", "exception", "死循環", "修不好", "除錯", "報錯", "修復", "失敗", "壞掉", "截斷", "異常"),
-    "data_analysis": ("數據", "分析", "統計", "報表", "圖表", "價格", "漲幅", "租金", "材積", "excel", "xlsx", "kpi", "bigquery", "d3", "分店實收", "月費", "fp&a", "預算", "定價", "估價", "毛利", "試算"),
+    "data_analysis": ("數據", "分析", "統計", "報表", "圖表", "價格", "漲幅", "租金", "材積", "excel", "xlsx", "kpi", "bigquery", "d3", "分店實收", "月費", "fp&a", "預算", "定價", "估價", "毛利", "試算", "計價", "扣款"),
     "ui_frontend": ("ui", "ux", "uiux", "css", "modal", "按鈕", "下拉選單", "版面", "美化", "設計", "react", "html", "樣式", "margin", "padding", "rwd", "3d", "sitemap", "canvas", "拖曳", "視角", "面板", "體驗"),
-    "backend_api": ("api", "fastapi", "database", "turso", "sqlite", "schema", "後端", "端點", "session", "auth", "sql", "索引"),
+    "backend_api": ("api", "fastapi", "database", "turso", "sqlite", "schema", "後端", "端點", "session", "auth", "sql", "索引", "webhook", "驗簽", "upsert", "hmac"),
     "seo_content": ("seo", "gsc", "ga4", "關鍵字", "排名", "文案", "文章", "json-ld", "內鏈", "外鏈", "serp", "threads", "line oa", "官方帳號", "蝦皮", "momo", "行銷", "社群", "geo", "aeo", "rsa", "廣告", "capi", "gtm"),
     "ops_management": ("營運", "管理", "coo", "流程", "瓶頸", "sop", "交接", "b2b", "提案", "內訓", "培訓", "設備群", "iot"),
     "simplify_refactor": ("簡化", "精簡", "刪除", "移除", "重構", "ponytail", "重複", "死碼", "wrapper"),
 }
 
+# 角色工具配額收斂：每角色最多 4 個技能（雙固定底座 ponytail 家族 + security-audit/bughunter，加上 0~2 個高相關動態技能）
+MAX_SKILLS_PER_ROLE = 4
+
+ROLE_KEY_ALIASES: dict[str, str] = {
+    "qwen-max": "Agent C & D-Refactor (qwen4-max-preview)",
+    "Agent C & D-Refactor (qwen-max)": "Agent C & D-Refactor (qwen4-max-preview)",
+}
+
 # 依「角色 × 任務領域」動態切換的專屬技能矩陣 (Role-Scoped × Task-Aware Skill Matrix)
+# 雙固定底座設計：每個角色預設強制鎖定 [ponytail 家族, security-audit 或 bughunter]
 ROLE_BASE_SKILLS: dict[str, list[str]] = {
-    "Agent 0 & E-Spec (deepseek-flash)": ["accidental-data-loss-prevention", "decisions-governance", "stage-gate-review"],
-    "Agent Planner & Re-planner (gemini-4-carbon)": ["graphify", "writing-plans", "decisions-governance"],
-    "Agent Executor & QA (gemini-4-hydrogen)": ["tdd-workflow", "ponytail", "verification-quality"],
-    "Agent B Red Team (grok-4.7)": ["ponytail-review", "agency-engineering-code-reviewer"],
-    "Agent C & D-Refactor (qwen4-max-preview)": ["ponytail", "decisions-governance"],
-    "Agent Decision (jev-1.13.0)": ["ponytail-review", "verification-quality"],
+    "Agent 0 & E-Spec (deepseek-flash)": ["ponytail", "bughunter"],
+    "Agent Planner & Re-planner (gemini-4-carbon)": ["ponytail", "security-audit"],
+    "Agent Executor & QA (gemini-4-hydrogen)": ["ponytail", "security-audit"],
+    "Agent B Red Team (grok-4.7)": ["ponytail-review", "bughunter"],
+    "Agent C & D-Refactor (qwen4-max-preview)": ["ponytail", "security-audit"],
+    "Agent Decision (jev-1.13.0)": ["ponytail-review", "security-audit"],
 }
 
 ROLE_TASK_SKILLS: dict[str, dict[str, list[str]]] = {
@@ -1093,12 +1209,43 @@ def detect_industry_family(prompt: str = "") -> str:
     return "storeasy"
 
 
-def detect_task_domains(prompt: str) -> list[str]:
+def resolve_role_key(role: str) -> str:
+    """正規化角色鍵名並相容 qwen-max 等歷史別名。"""
+    return ROLE_KEY_ALIASES.get(role, role)
+
+
+def detect_task_domains(prompt: str, changed_files: list[str] | None = None) -> list[str]:
     p_low = prompt.lower()
     matched: list[str] = []
     for domain, kws in TASK_DOMAIN_KEYWORDS.items():
         if any(kw in p_low for kw in kws):
             matched.append(domain)
+
+    explicit_ui_or_seo = bool(
+        re.search(
+            r"(?:^|[^a-z])(ui|ux|css|tsx|jsx|react|frontend|html|seo|gsc|ga4|serp|sitemap|json-ld|blog|article|threads)(?:$|[^a-z])|版面|按鈕|樣式|文案|社群|行銷|商品頁|頁面",
+            p_low,
+        )
+    )
+    has_3d_geo = bool(
+        re.search(r"\b(?:3d|fov|bin\s*packing|raycast|dxf|bounding\s*box)\b", p_low)
+    )
+    pure_backend_hint = bool(
+        re.search(r"(\.py\b|sqlite|upsert|fastapi|webhook|驗簽|計價公式|報價公式|sql injection|pytest|端點)", p_low)
+    )
+
+    if changed_files and infer_file_signals is not None:
+        fs = infer_file_signals(changed_files)
+        for d in fs.get("domain_hints", []):
+            if d not in matched:
+                matched.append(d)
+        if fs.get("is_pure_backend_python") or fs.get("has_code_without_frontend"):
+            pure_backend_hint = True
+
+    if pure_backend_hint and not explicit_ui_or_seo:
+        drop_domains = ("seo_content",) if has_3d_geo else ("ui_frontend", "seo_content")
+        matched = [d for d in matched if d not in drop_domains]
+
     return matched or ["simplify_refactor"]
 
 
@@ -1121,7 +1268,7 @@ def _extract_skill_snippet(skill_item: dict[str, Any]) -> str:
 
 
 def _load_workspace_context_snippets() -> dict[str, str]:
-    """自動擷取當前工作區 AGENTS.md 業務鐵律與 graphify-out/GRAPH_REPORT.md 核心節點摘要。"""
+    """自動擷取當前工作區 AGENTS.md 業務鐵律、graphify 核心節點與完整 DECISIONS.md 精簡目錄。"""
     cwd = Path.cwd()
     agents_txt = ""
     for candidate in (cwd / "AGENTS.md", cwd / "CLAUDE.md"):
@@ -1142,51 +1289,246 @@ def _load_workspace_context_snippets() -> dict[str, str]:
     dec_path = cwd / "DECISIONS.md"
     if dec_path.is_file():
         raw = dec_path.read_text(encoding="utf-8", errors="ignore")
-        valid_lines = [
-            ln.strip() for ln in raw.splitlines()
-            if ln.strip().startswith("|") and "有效" in ln and "取代" not in ln
-        ]
-        decisions_txt = ("\n".join(valid_lines) if valid_lines else raw[:600])[:600]
+        compact_rows: list[str] = []
+        for ln in raw.splitlines():
+            st = ln.strip()
+            if not st.startswith("|"):
+                continue
+            if "有效" not in st and "待確認" not in st:
+                continue
+            if "取代" in st:
+                continue
+            cols = [c.strip() for c in st.strip("|").split("|")]
+            if len(cols) >= 6:
+                num = cols[0]
+                summary_clean = re.sub(r"\[([^\]]+)\]\([^)]+\)", r"\1", cols[1])
+                status = cols[2].replace("*", "")
+                scope = cols[4]
+                ban_col = cols[5]
+                if "禁止" in ban_col:
+                    rule_ban = ban_col[ban_col.index("禁止") :][:42]
+                else:
+                    rule_ban = ban_col[:38]
+                compact_rows.append(f"- {num} ({status}/{scope}) {summary_clean}: {rule_ban}")
+        decisions_txt = ("\n".join(compact_rows) if compact_rows else raw[:1600])[:1600]
 
     return {"agents_rules": agents_txt, "graphify_summary": graph_txt, "decisions_summary": decisions_txt}
 
 
-def plan_role_skill_matrix(prompt: str) -> dict[str, Any]:
-    """根據任務 Prompt 與專案所屬產業家族 (storeasy vs us3c) 動態計算每個 Agent 角色綁定的專屬 Skills 與上下文摘要。"""
+def _is_skill_allowed_for_context(
+    skill_name: str,
+    *,
+    pure_backend_mode: bool,
+    is_docs_only: bool,
+    explicit_ui_or_seo: bool,
+    has_spreadsheet_signal: bool = True,
+    prompt_and_files_low: str = "",
+) -> bool:
+    s_low = skill_name.lower()
+    if (pure_backend_mode or not explicit_ui_or_seo) and (
+        s_low == "seo-workflow-rules" or s_low.startswith("seo-") or s_low in SEO_COPY_SKILLS
+    ):
+        if pure_backend_mode or not explicit_ui_or_seo:
+            return False
+    if pure_backend_mode and not explicit_ui_or_seo:
+        if s_low in FRONTEND_UI_SKILLS:
+            return False
+    if is_docs_only and not explicit_ui_or_seo:
+        if s_low in (FRONTEND_UI_SKILLS - {"diagram-design", "d3-data-visualization"}) or s_low in {"fastapi-templates", "tdd-workflow"}:
+            return False
+    if s_low == "xlsx" and not has_spreadsheet_signal:
+        return False
+    if s_low.startswith(("gcp-", "dbt-")):
+        if not prompt_and_files_low or not re.search(r"\b(?:gcp|bigquery|dbt|spark|dataflow|composer)\b", prompt_and_files_low):
+            return False
+    if s_low == "kiosk-image-optimizer":
+        if not prompt_and_files_low or not re.search(r"\b(?:webp|image|kiosk)\b|縮圖|壓縮|圖片|門市圖", prompt_and_files_low):
+            return False
+    if prompt_and_files_low:
+        if s_low == "us3c-imcheck-device-qc" and not re.search(
+            r"imcheck|驗機|黑名單|blacklist|securaze|device.?qc", prompt_and_files_low
+        ):
+            return False
+        if s_low == "us3c-kiosk-driver-ops" and not re.search(
+            r"kiosk|機台|回收機|司機|異常單|driver|patrol", prompt_and_files_low
+        ):
+            return False
+        if s_low == "us3c-tradein-margin-pricing" and not re.search(
+            r"quote|pricing|calc|margin|舊換新|計價|報價|定價|毛利|收購|估價|扣款", prompt_and_files_low
+        ):
+            return False
+    return True
+
+
+def plan_role_skill_matrix(
+    prompt: str,
+    *,
+    changed_files: list[str] | None = None,
+    diff_text: str = "",
+) -> dict[str, Any]:
+    """根據任務 Prompt、異動檔案路徑與 Diff 動態計算每個 Agent 角色之雙固定底座 + 0~2 動態 Skills（上限 4）。"""
+    merged_files = list(changed_files or [])
+    if extract_files_from_diff is not None and diff_text:
+        for df in extract_files_from_diff(diff_text):
+            if df not in merged_files:
+                merged_files.append(df)
+
+    file_signals = (
+        infer_file_signals(merged_files)
+        if infer_file_signals is not None
+        else {"files": merged_files, "is_docs_only": False, "is_pure_backend_python": False, "domain_hints": []}
+    )
     industry_family = detect_industry_family(prompt)
     active_task_matrix = ROLE_TASK_SKILLS_US3C if industry_family == "us3c" else ROLE_TASK_SKILLS
-    domains = detect_task_domains(prompt)
+    domains = detect_task_domains(prompt, changed_files=merged_files or None)
+
+    p_low = prompt.lower()
+    prompt_and_files_low = (prompt + "\n" + "\n".join(merged_files)).lower()
+    is_docs_only = bool(file_signals.get("is_docs_only"))
+    explicit_security_q = bool(
+        re.search(r"security|bughunter|xss|sqli|sql injection|idor|ssrf|csrf|lfi|驗簽|漏洞|資安|越權", p_low)
+    )
+    explicit_ui_or_seo = bool(
+        re.search(
+            r"(?:^|[^a-z])(ui|ux|css|tsx|jsx|react|frontend|html|seo|gsc|ga4|serp|sitemap|json-ld|blog|article|threads)(?:$|[^a-z])|版面|按鈕|樣式|文案|社群|行銷|商品頁|頁面",
+            p_low,
+        )
+    )
+    has_spreadsheet_signal = bool(file_signals.get("has_data")) or bool(
+        re.search(r"\b(xlsx?|xlsm|csv)\b|excel|試算表|巨集樣板", p_low)
+    )
+    pure_backend_mode = (
+        bool(file_signals.get("is_pure_backend_python"))
+        or bool(file_signals.get("has_code_without_frontend"))
+        or (
+            bool(re.search(r"(\.py\b|sqlite|upsert|fastapi|webhook|驗簽|計價公式|報價公式|sql injection|pytest|端點)", p_low))
+            and not explicit_ui_or_seo
+        )
+    )
+
     skill_map: dict[str, dict[str, Any]] = {}
     routed_top: list[str] = []
+    excluded_noise_map: dict[str, str] = {}
+    router_obj = None
+    top_route_score = 0.0
+    role_rel_cutoff = 0.55 if is_docs_only else (0.12 if len(domains) > 1 else 0.35)
 
     if load_active_skills is not None and SkillRouter is not None:
         try:
             active_skills = load_active_skills(deduplicate=True)
             skill_map = {s["name"]: s for s in active_skills}
-            router = SkillRouter(active_skills)
-            routed_top = [r["name"] for r in router.route(prompt, top_k=4)]
-        except Exception:
-            # Fall back to static role-task skill bindings if dynamic SkillRouter fails
-            pass
+            router_obj = SkillRouter(active_skills)
+            diag = router_obj.route_with_diagnostics(
+                prompt,
+                top_k=5,
+                changed_files=merged_files or None,
+                diff_text="",
+                min_score=5.0,
+                relative_cutoff=0.12,
+                include_bughunter=False,
+            )
+            routed_top = [r["name"] for r in diag.get("results", [])]
+            if diag.get("results"):
+                top_route_score = float(diag["results"][0].get("score", 0.0))
+            for ex_item in diag.get("excluded_noise", []):
+                excluded_noise_map.setdefault(ex_item["skill"], ex_item["reason"])
+        except Exception as exc:
+            print(f"[multi_model_gate] SkillRouter fallback: {exc}", file=sys.stderr)
+
+    bughunter_plan = (
+        select_bughunter_skills(prompt, changed_files=merged_files or None, diff_text=diff_text, max_skills=2)
+        if select_bughunter_skills is not None
+        else []
+    )
 
     ws_ctx = _load_workspace_context_snippets()
     role_plans: dict[str, dict[str, Any]] = {}
 
     for role, base_list in ROLE_BASE_SKILLS.items():
         combined: list[str] = []
+        # 1) 雙固定底座：ponytail 家族 + security-audit/bughunter（純文件且無安全要求時自動降載資安工具）
         for s_name in base_list:
+            if is_docs_only and not explicit_security_q and s_name in {"bughunter", "security-audit"}:
+                continue
             if s_name not in combined:
                 combined.append(s_name)
-        for dom in domains:
-            for s_name in active_task_matrix.get(role, {}).get(dom, []):
-                if s_name not in combined:
-                    combined.append(s_name)
-        # 將 skill_router 算出的 Top-2 高分技能補入，每個角色上限 6 個精準技能（Role-Scoped Tool Pruning）
-        for s_name in routed_top[:2]:
-            if s_name not in combined and len(combined) < 6:
-                combined.append(s_name)
-        combined = combined[:6]
+        if is_docs_only and not explicit_security_q and "decisions-governance" not in combined:
+            combined.append("decisions-governance")
 
+        # 1.5) 程式碼任務對 Executor 保護 TDD 測試安全網（保留 1 個動態槽位給 tdd-workflow）
+        has_code_files = bool(
+            file_signals.get("has_backend_python")
+            or file_signals.get("has_frontend")
+            or file_signals.get("has_tests")
+        )
+        if (
+            not is_docs_only
+            and has_code_files
+            and role == "Agent Executor & QA (gemini-4-hydrogen)"
+            and "tdd-workflow" not in combined
+            and len(combined) < MAX_SKILLS_PER_ROLE
+        ):
+            combined.append("tdd-workflow")
+
+        # 2) 動態候選 0~2 個：優先由角色正交 + 檔案加權 SkillRouter 篩出高分技能（寧缺勿濫）
+        if router_obj is not None:
+            try:
+                role_diag = router_obj.route_with_diagnostics(
+                    prompt,
+                    top_k=3,
+                    changed_files=merged_files or None,
+                    diff_text="",
+                    role=role,
+                    min_score=6.0,
+                    relative_cutoff=role_rel_cutoff,
+                    include_bughunter=False,
+                )
+                for ex_item in role_diag.get("excluded_noise", []):
+                    excluded_noise_map.setdefault(ex_item["skill"], ex_item["reason"])
+                for r in role_diag.get("results", []):
+                    s_name = r["name"]
+                    if len(combined) >= MAX_SKILLS_PER_ROLE:
+                        break
+                    if s_name not in combined and _is_skill_allowed_for_context(
+                        s_name,
+                        pure_backend_mode=pure_backend_mode,
+                        is_docs_only=is_docs_only,
+                        explicit_ui_or_seo=explicit_ui_or_seo,
+                        has_spreadsheet_signal=has_spreadsheet_signal,
+                        prompt_and_files_low=prompt_and_files_low,
+                    ):
+                        combined.append(s_name)
+            except Exception as exc:
+                print(f"[multi_model_gate] role route skipped for {role}: {exc}", file=sys.stderr)
+
+        # 3) 角色專屬靜態領域補位（純文件修改不從業務硬體靜態表補位；其餘亦須通過負向排除與配額上限）
+        if len(combined) < MAX_SKILLS_PER_ROLE and not is_docs_only:
+            static_cap = 1 if (domains == ["simplify_refactor"] and not merged_files) else MAX_SKILLS_PER_ROLE
+            added_static = 0
+            # 當同時有 backend_api 與 data_analysis 且無實際試算表檔案時，優先 backend_api
+            ordered_domains = list(domains)
+            if not has_spreadsheet_signal and "backend_api" in ordered_domains:
+                ordered_domains = ["backend_api"] + [d for d in ordered_domains if d != "backend_api"]
+            for dom in ordered_domains:
+                for s_name in active_task_matrix.get(role, {}).get(dom, []):
+                    if len(combined) >= MAX_SKILLS_PER_ROLE or added_static >= static_cap:
+                        break
+                    if s_name in combined:
+                        continue
+                    if not _is_skill_allowed_for_context(
+                        s_name,
+                        pure_backend_mode=pure_backend_mode,
+                        is_docs_only=is_docs_only,
+                        explicit_ui_or_seo=explicit_ui_or_seo,
+                        has_spreadsheet_signal=has_spreadsheet_signal,
+                        prompt_and_files_low=prompt_and_files_low,
+                    ):
+                        excluded_noise_map.setdefault(s_name, "static_matrix_context_guard")
+                        continue
+                    combined.append(s_name)
+                    added_static += 1
+
+        combined = combined[:MAX_SKILLS_PER_ROLE]
         snippets = [
             _extract_skill_snippet(skill_map[s_name])
             for s_name in combined
@@ -1197,10 +1539,26 @@ def plan_role_skill_matrix(prompt: str) -> dict[str, Any]:
             "skill_snippets": snippets,
         }
 
+    confidence_level = "high" if (top_route_score >= 15.0 or (merged_files and top_route_score >= 8.0)) else (
+        "medium" if top_route_score >= 5.0 else "baseline"
+    )
+
     return {
         "industry_family": industry_family,
         "detected_task_domains": domains,
+        "changed_files": merged_files,
+        "file_signals": file_signals,
         "router_top_skills": routed_top,
+        "excluded_noise_skills": [
+            {"skill": k, "reason": v} for k, v in list(excluded_noise_map.items())[:MAX_EXCLUDED_NOISE]
+        ],
+        "bughunter_plan": bughunter_plan,
+        "routing_confidence": {
+            "level": confidence_level,
+            "top_score": round(top_route_score, 2),
+            "file_driven": bool(merged_files),
+        },
+        "max_skills_per_role": MAX_SKILLS_PER_ROLE,
         "has_graphify_report": bool(ws_ctx["graphify_summary"]),
         "has_agents_rules": bool(ws_ctx["agents_rules"]),
         "has_decisions_doc": bool(ws_ctx.get("decisions_summary")),
@@ -1210,18 +1568,29 @@ def plan_role_skill_matrix(prompt: str) -> dict[str, Any]:
 
 
 def build_role_system_prompt(role: str, plan: dict[str, Any]) -> str:
-    role_info = plan.get("roles", {}).get(role, {})
+    resolved_role = resolve_role_key(role)
+    role_info = plan.get("roles", {}).get(resolved_role) or plan.get("roles", {}).get(role, {})
     bound_skills = role_info.get("bound_skills", [])
     snippets = role_info.get("skill_snippets", [])
     domains = plan.get("detected_task_domains", [])
     ws_ctx = plan.get("workspace_context", {})
+    bughunter_plan = plan.get("bughunter_plan", [])
 
     lines = [
         f"你是 Ruflo Swarm V3 的【{role}】（強制使用極簡繁體中文）。",
-        f"本輪偵測任務領域：{', '.join(domains)} | 為你專屬掛載之 Role-Scoped Skills：{', '.join(bound_skills)}。",
+        f"本輪偵測任務領域：{', '.join(domains)} | 為你專屬掛載之 Role-Scoped Skills（上限 {MAX_SKILLS_PER_ROLE}）：{', '.join(bound_skills)}。",
     ]
     if snippets:
         lines.append("【你本輪必須遵守的專屬技能準則與避坑指南】：\n" + "\n".join(snippets))
+    if bughunter_plan and ("Agent B" in role or "Red Team" in role or "Agent 0" in role):
+        bh_lines = []
+        for b in bughunter_plan:
+            summary_note = f" | 檢查重點: {b['checklist_summary']}" if b.get("checklist_summary") else ""
+            bh_lines.append(f"- `{b['name']}` ({b['reason']}{summary_note}) -> 路徑：`{b['skill_path']}`")
+        lines.append(
+            "【按需掛載之 Claude-BugHunter Vault 專項狩獵指引（禁止複製檔案，僅依焦點驗證）】：\n"
+            + "\n".join(bh_lines)
+        )
     if ("Planner" in role or "Agent A" in role or "Agent C" in role) and ws_ctx.get("graphify_summary"):
         lines.append("【Graphify 知識圖譜 핵심樞紐 (God Nodes)】：\n" + ws_ctx["graphify_summary"])
     if ("Agent 0" in role or "Planner" in role or "Agent B" in role or "Decision" in role or "carbon" in role) and ws_ctx.get("agents_rules"):
@@ -1245,6 +1614,71 @@ def build_role_system_prompt(role: str, plan: dict[str, Any]) -> str:
         "3. 開頭給出明確燈號：🟢 (安全可執行) / 🟡 (需注意細節但可執行) / 🔴 (嚴禁執行，會破壞核心邏輯)。"
     )
     return "\n\n".join(lines)
+
+
+def compute_skill_attribution(results: list[dict[str, Any]], skill_plan: dict[str, Any]) -> dict[str, Any]:
+    """分析各異質模型實際回覆中對已掛載 Skills 與 Claude-BugHunter 要點的引用與覆蓋歸因。"""
+    skill_signal_hints: dict[str, tuple[str, ...]] = {
+        "ponytail": ("精簡", "不必要", "重複", "wrapper", "最小變更", "ponytail"),
+        "ponytail-review": ("精簡", "死碼", "cuttable", "重複", "簡化", "ponytail"),
+        "security-audit": ("注入", "驗簽", "權限", "漏洞", "sql", "csrf", "xss", "hmac", "security"),
+        "bughunter": ("漏洞", "bypass", "越權", "hunt-", "sql", "注入", "邊界", "bughunter"),
+        "us3c-tradein-margin-pricing": ("計價", "毛利", "定價", "上限", "下限", "0.2", "扣款", "報價"),
+        "tdd-workflow": ("pytest", "測試", "斷言", "red", "regression", "回歸"),
+        "agency-testing-api-tester": ("api", "端點", "狀態碼", "fastapi", "契約", "驗證"),
+        "decisions-governance": ("決策", "decisions.md", "adr"),
+    }
+    bh_items = skill_plan.get("bughunter_plan", [])
+    by_role: dict[str, dict[str, Any]] = {}
+    roles_with_signals = 0
+
+    for res in results:
+        role = str(res.get("role", "unknown"))
+        resolved = resolve_role_key(role)
+        bound = (
+            skill_plan.get("roles", {}).get(resolved, {}).get("bound_skills")
+            or skill_plan.get("roles", {}).get(role, {}).get("bound_skills")
+            or []
+        )
+        review_text = str(res.get("review") or res.get("summary") or "").lower()
+        attributed: list[dict[str, Any]] = []
+        for s_name in bound:
+            hints = (s_name.lower(), *skill_signal_hints.get(s_name, ()))
+            matched_hints = []
+            for h in hints:
+                if re.fullmatch(r"[a-z0-9]+", h):
+                    if re.search(rf"\b{re.escape(h)}\b", review_text):
+                        matched_hints.append(h)
+                elif h in review_text:
+                    matched_hints.append(h)
+            if matched_hints:
+                attributed.append({"skill": s_name, "signals": matched_hints[:3]})
+
+        bh_hits: list[str] = []
+        if "Agent B" in role or "Red Team" in role or "Agent 0" in role:
+            for bh in bh_items:
+                bh_name = str(bh.get("name", "")).lower()
+                bh_short = bh_name.replace("hunt-", "")
+                if bh_name in review_text or bh_short in review_text:
+                    bh_hits.append(bh["name"])
+
+        if attributed or bh_hits:
+            roles_with_signals += 1
+        by_role[role] = {
+            "status": res.get("status", "unknown"),
+            "bound_skills": bound,
+            "attributed_skills": attributed,
+            "bughunter_referenced": bh_hits,
+        }
+
+    return {
+        "summary": {
+            "roles_evaluated": len(results),
+            "roles_with_attributed_skills": roles_with_signals,
+            "bughunter_injected": [b["name"] for b in bh_items],
+        },
+        "by_role": by_role,
+    }
 
 
 def _request_id_from_headers(headers: Any) -> str | None:
@@ -1346,6 +1780,8 @@ def _call_jev(ep: dict[str, Any], prompt: str, plan: dict[str, Any] | None, time
         "review": format_jev_review(answers, decision),
         "jev_decision": decision,
         "jev_answers": answers,
+        "prompt_truncated": len(prompt.strip()) > JEV_STATE_CHAR_CAP,
+        "omitted_chars": max(0, len(prompt.strip()) - JEV_STATE_CHAR_CAP),
         "attempt_results": [{"provider": "typesafe", "model": att["model"], "status": "ok", "request_id": request_id}],
     }
 
@@ -1430,6 +1866,7 @@ def _call_gemini_decision(
                 "spec_shrink": spec_shrink,
                 "reason": reason,
             }
+            dec_cap = 20000 if att["provider"] == "agy_decision_oauth" else JEV_STATE_CHAR_CAP
             attempt_results.append({"provider": att["provider"], "model": att["model"], "status": "ok", "request_id": req_id})
             return {
                 "role": role,
@@ -1444,6 +1881,8 @@ def _call_gemini_decision(
                 "usage": usage,
                 "review": f"{icon} Gemini Decision API ({verdict}, score={score}): {reason}",
                 "gemini_decision": decision,
+                "prompt_truncated": len(prompt) > dec_cap,
+                "omitted_chars": max(0, len(prompt) - dec_cap),
                 "attempt_results": attempt_results,
             }
         except Exception as exc:
@@ -1486,13 +1925,13 @@ def call_model(ep: dict[str, Any], prompt: str, plan: dict[str, Any] | None = No
             "bound_skills": bound_skills,
             "provider": "cursor_plan",
             "requested_model": ep["requested_model"],
-            "responded_model": "grok-4.7 (cursor-plan-subagent)",
-            "request_id": "cursor-plan-subagent-grok",
-            "status": "ok",
-            "finish_reason": "stop",
+            "responded_model": "grok-4.7 (delegated-to-ide)",
+            "request_id": "cursor-plan-delegated",
+            "status": "delegated_to_ide",
+            "finish_reason": "delegated",
             "latency_ms": 0,
-            "review": "🟢 由 Cursor Plan 內建 Grok 子代理直接執行紅隊審查（免消耗外部 xAI / OpenRouter API 額度）。",
-            "attempt_results": [{"provider": "cursor_plan", "model": "grok-4.7", "status": "ok", "request_id": "cursor-plan-subagent-grok"}],
+            "review": "⏭️ 委派由 IDE 內建 Grok 子代理執行紅隊審查（本腳本未實跑外部 Grok；如需 CLI 實跑請加 --include-grok-api）。",
+            "attempt_results": [{"provider": "cursor_plan", "model": "grok-4.7", "status": "delegated_to_ide", "request_id": "cursor-plan-delegated"}],
         }
     t0 = time.time()
     role = ep["role"]
@@ -1500,12 +1939,22 @@ def call_model(ep: dict[str, Any], prompt: str, plan: dict[str, Any] | None = No
     bound_skills = (plan or {}).get("roles", {}).get(role, {}).get("bound_skills", [])
     last_err = None
     last_code = None
+    timed_out = False
     attempt_results: list[dict[str, Any]] = []
 
     # 鐵律 #2：嚴格先跑所有直打官方模型 API (direct_attempts)；只要任一直連 API 回傳有效非空內容，立即返回，絕不走 OpenRouter！
     direct_attempts = [a for a in ep["attempts"] if a["provider"] != "openrouter"]
     openrouter_attempts = [a for a in ep["attempts"] if a["provider"] == "openrouter"]
     scoped_prompt = _cap_prompt_for_model(prompt)
+
+    def _trunc_meta(provider_name: str) -> dict[str, Any]:
+        provider_cap = 20000 if provider_name == "agy_cli_oauth" else (25000 if provider_name == "grok_cli_oauth" else CHAT_PROMPT_CHAR_CAP)
+        effective_cap = min(CHAT_PROMPT_CHAR_CAP, provider_cap) if CHAT_PROMPT_CHAR_CAP > 0 else provider_cap
+        is_truncated = effective_cap > 0 and len(prompt) > effective_cap
+        return {
+            "prompt_truncated": is_truncated,
+            "omitted_chars": max(0, len(prompt) - effective_cap) if is_truncated else 0,
+        }
 
     for phase_attempts in (direct_attempts, openrouter_attempts):
         if not phase_attempts:
@@ -1517,7 +1966,7 @@ def call_model(ep: dict[str, Any], prompt: str, plan: dict[str, Any] | None = No
                         model=att["model"],
                         system_prompt=system_prompt,
                         prompt=scoped_prompt,
-                        timeout=max(timeout, 150),
+                        timeout=200,
                     )
                     result = {
                         "role": role,
@@ -1531,6 +1980,7 @@ def call_model(ep: dict[str, Any], prompt: str, plan: dict[str, Any] | None = No
                         "latency_ms": round((time.time() - t0) * 1000),
                         "usage": {},
                         "review": content,
+                        **_trunc_meta("grok_cli_oauth"),
                     }
                     attempt_results.append({
                         "provider": "grok_cli_oauth",
@@ -1541,6 +1991,18 @@ def call_model(ep: dict[str, Any], prompt: str, plan: dict[str, Any] | None = No
                     })
                     result["attempt_results"] = attempt_results
                     return result
+                except subprocess.TimeoutExpired:
+                    timed_out = True
+                    last_err = "Grok CLI exceeded 200s timeout (Option B triggered)"
+                    last_code = None
+                    attempt_results.append({
+                        "provider": "grok_cli_oauth",
+                        "model": att["model"],
+                        "status": "timeout",
+                        "error_type": "TimeoutExpired",
+                        "detail": last_err,
+                    })
+                    continue
                 except Exception as exc:
                     last_err = str(exc)[:240]
                     last_code = None
@@ -1571,6 +2033,7 @@ def call_model(ep: dict[str, Any], prompt: str, plan: dict[str, Any] | None = No
                         "latency_ms": round((time.time() - t0) * 1000),
                         "usage": agy_res["usage"],
                         "review": agy_res["text"],
+                        **_trunc_meta("agy_cli_oauth"),
                     }
                     attempt_results.append({
                         "provider": "agy_cli_oauth",
@@ -1602,6 +2065,25 @@ def call_model(ep: dict[str, Any], prompt: str, plan: dict[str, Any] | None = No
                 raw = _send_chat_request(att["url"], att["key"], att["model"], system_prompt, scoped_prompt, req_timeout)
                 choice = (raw.get("choices") or [{}])[0]
                 content = (choice.get("message") or {}).get("content", "")
+                if (not isinstance(content, str) or not content.strip()) and att["provider"] == "qwen_direct" and choice.get("finish_reason") == "length":
+                    attempt_results.append({
+                        "provider": att["provider"],
+                        "model": att["model"],
+                        "status": "empty_retry_no_thinking",
+                        "finish_reason": "length",
+                        "request_id": raw.get("id"),
+                    })
+                    raw = _send_chat_request(
+                        att["url"],
+                        att["key"],
+                        att["model"],
+                        system_prompt,
+                        scoped_prompt,
+                        req_timeout,
+                        extra_payload={"enable_thinking": False},
+                    )
+                    choice = (raw.get("choices") or [{}])[0]
+                    content = (choice.get("message") or {}).get("content", "")
                 if not isinstance(content, str) or not content.strip():
                     last_err = "Provider returned no review content; not counted as success"
                     last_code = None
@@ -1619,6 +2101,7 @@ def call_model(ep: dict[str, Any], prompt: str, plan: dict[str, Any] | None = No
                     "latency_ms": round((time.time() - t0) * 1000),
                     "usage": raw.get("usage", {}),
                     "review": content.strip(),
+                    **_trunc_meta(att["provider"]),
                 }
                 attempt_results.append({"provider": att["provider"], "model": att["model"], "status": "ok", "finish_reason": result["finish_reason"], "request_id": result["request_id"]})
                 result["attempt_results"] = attempt_results
@@ -1639,7 +2122,7 @@ def call_model(ep: dict[str, Any], prompt: str, plan: dict[str, Any] | None = No
         "role": role,
         "bound_skills": bound_skills,
         "requested_model": ep["requested_model"],
-        "status": "http_error" if last_code else "error",
+        "status": "timeout" if (timed_out and not last_code) else ("http_error" if last_code else "error"),
         "http_code": last_code,
         "latency_ms": round((time.time() - t0) * 1000),
         "error": last_err,
@@ -1693,48 +2176,241 @@ def _run_deterministic_rule_lint(
         }
 
 
-def compute_local_gate_score(prompt: str, results: list[dict[str, Any]]) -> dict[str, Any]:
-    """JEV 有成功回答時用它的 choice／noul。沒有 JEV 時才退回數散文燈號，那個分數不是校準機率。"""
-    protected_keywords = ("bin packing", "collision", "bounding box", "raycast", "dxf", "matrix", "rotation", "fov", "租金", "材積")
-    touches_protected = [kw for kw in protected_keywords if kw in prompt.lower()]
-    ok_count = sum(1 for r in results if r.get("status") == "ok")
+def _normalize_rel_path(raw: str) -> str | None:
+    """正規化相對路徑並攔截絕對路徑與 .. 目錄穿越。"""
+    s = str(raw).strip().strip('"').replace("\\", "/")
+    if not s or s.startswith("/") or re.match(r"^[a-zA-Z]:", s):
+        return None
+    norm = posixpath.normpath(s)
+    if norm in (".", "..") or norm.startswith("../") or "/../" in norm:
+        return None
+    return norm.lower()
+
+
+def _strip_multicolor_legends(text: str) -> str:
+    """僅剃除同時包含至少兩種不同顏色燈號之並列圖例，避免誤吞同色真紅燈（如 🔴 A/B 🔴）。"""
+    pattern = r"[🟢🟡🔴](?:[^🟢🟡🔴\n]{0,24}[/／|｜、,][^🟢🟡🔴\n]{0,24}[🟢🟡🔴])+"
+    return re.sub(
+        pattern,
+        lambda m: " " if len(set(re.findall(r"[🟢🟡🔴]", m.group(0)))) >= 2 else m.group(0),
+        text,
+    )
+
+
+def _extract_prose_vote(review_text: str, *, allow_tail_red: bool = False) -> str:
+    """剃除開頭 450 字內之多色並列圖例後取首個獨立主燈號；紅隊若前段無燈號則檢核後文 🔴 防否決權蒸發。"""
+    head = _strip_multicolor_legends(review_text[:450])
+    m = re.search(r"[🟢🟡🔴]", head)
+    if m:
+        return {"🟢": "green", "🟡": "yellow", "🔴": "red"}[m.group(0)]
+    if allow_tail_red and len(review_text) > 450:
+        tail = _strip_multicolor_legends(review_text[450:])
+        if "🔴" in tail:
+            return "red"
+    return ""
+
+
+def _is_red_team_result(r: dict[str, Any]) -> bool:
+    """依 role 或穩定 provider 辨識 Agent B 紅隊結果。"""
+    role = str(r.get("role", ""))
+    provider = str(r.get("provider", ""))
+    return (
+        "Red Team" in role
+        or "Agent B" in role
+        or provider in ("grok_cli_oauth", "cursor_plan", "xai_responses_api")
+    )
+
+
+def compute_local_gate_score(
+    prompt: str,
+    results: list[dict[str, Any]],
+    *,
+    raw_user_prompt: str = "",
+    changed_files: list[str] | None = None,
+    industry_family: str = "",
+) -> dict[str, Any]:
+    """結合結構裁決引擎與異質散文嚴格去重投票；封鎖無燈號、路徑穿越、半數截斷、紅隊否決與單一引擎放行。"""
+    storeasy_kws = ("bin packing", "collision", "bounding box", "raycast", "dxf", "matrix", "rotation", "fov", "租金", "材積")
+    us3c_kws = ("auto_quote", "calculator", "pricing", "margin", "收購價", "計價", "底限", "扣款", "blacklist", "黑名單", "securaze")
+    audit_kws = ("sha256", "hash_chain", "只作廢不刪除", "void_only")
+    # 雙禁區與審計詞庫一律全掃，以防跨倉修改或錯誤 industry_family 標籤漏檢
+    active_kws = storeasy_kws + us3c_kws + audit_kws
+
+    meta_exact = {
+        "scripts/multi_model_gate.py",
+        "scripts/skill_router.py",
+        "scripts/rule_lint.py",
+        "scripts/skill_eval_dataset.json",
+    }
+    raw_files = [str(f) for f in (changed_files or []) if str(f).strip()]
+    norm_files = [_normalize_rel_path(f) for f in raw_files]
+    # 僅跳過上述 4 支工具元檔、決策 Markdown 與 .agent/*.md 的 diff 字面值掃描防自我誤報；
+    # 非 .md 檔與其他路徑一律納入 diff 掃描，絕不免除實質審查。
+    is_meta_only = bool(norm_files) and all(
+        nf is not None and (
+            nf in meta_exact
+            or nf == "docs/decisions"
+            or (nf.startswith("docs/decisions/") and nf.endswith(".md"))
+            or (nf.startswith((".agent/", ".agents/")) and nf.endswith(".md"))
+        )
+        for nf in norm_files
+    )
+
+    header_text = (raw_user_prompt or prompt).split("【真實 Git Diff】", 1)[0]
+    diff_body = prompt.split("【真實 Git Diff】", 1)[1] if "【真實 Git Diff】" in prompt else ""
+    scope_parts = [header_text, "\n".join(changed_files or [])]
+    if not is_meta_only and diff_body:
+        diff_changed_lines = [
+            ln for ln in diff_body.splitlines()
+            if (ln.startswith("+") or ln.startswith("-")) and not ln.startswith(("+++", "---"))
+        ]
+        if diff_changed_lines:
+            scope_parts.append("\n".join(diff_changed_lines))
+    scope_text = "\n".join(scope_parts).lower()
+    touches_protected = [kw for kw in active_kws if kw in scope_text]
+    if industry_family == "storeasy":
+        cross_family_hits = [kw for kw in us3c_kws if kw in scope_text]
+    elif industry_family == "us3c":
+        cross_family_hits = [kw for kw in storeasy_kws if kw in scope_text]
+    else:
+        cross_family_hits = []
+
+    executed_results = [r for r in results if r.get("status") != "delegated_to_ide"]
+    delegated_roles = [str(r.get("role")) for r in results if r.get("status") == "delegated_to_ide"]
+    ok_executed = [r for r in executed_results if r.get("status") == "ok"]
+    failed_roles = [str(r.get("role")) for r in executed_results if r.get("status") != "ok"]
+    ok_count = len(ok_executed)
+
+    prose_results = [
+        r for r in ok_executed
+        if r.get("provider") not in ("typesafe", "agy_decision_oauth", "gemini_decision_direct")
+        and not r.get("jev_decision")
+        and not r.get("gemini_decision")
+    ]
+
+    vote_rank = {"": 0, "green": 1, "yellow": 2, "red": 3}
+    dedup_votes: dict[str, str] = {}
+    valid_providers_set: set[str] = set()
+    for r in prose_results:
+        resp_model = str(r.get("responded_model") or "").strip().lower()
+        model_key = resp_model if resp_model else f"{r.get('provider') or 'unknown'}:{r.get('role') or 'unknown'}".lower()
+        v = _extract_prose_vote(str(r.get("review", "")), allow_tail_red=_is_red_team_result(r))
+        if v:
+            valid_providers_set.add(str(r.get("provider") or "unknown").strip().lower())
+        prev = dedup_votes.get(model_key, "")
+        if model_key not in dedup_votes or vote_rank[v] > vote_rank[prev]:
+            dedup_votes[model_key] = v
+
+    valid_votes = [v for v in dedup_votes.values() if v]
+    abstain_count = sum(1 for v in dedup_votes.values() if not v)
+    red_flags = sum(1 for v in valid_votes if v == "red")
+    yellow_flags = sum(1 for v in valid_votes if v == "yellow")
+    green_flags = sum(1 for v in valid_votes if v == "green")
+    unique_prose_models = sorted(dedup_votes.keys())
+    unique_prose_providers = sorted(valid_providers_set)
+    truncated_roles = [str(r.get("role")) for r in ok_executed if r.get("prompt_truncated")]
+
+    red_team_present = any(_is_red_team_result(r) for r in results)
+    red_team_failed = any(
+        _is_red_team_result(r) and r.get("status") not in ("ok", "delegated_to_ide")
+        for r in results
+    )
+    red_team_vetoed = any(
+        _is_red_team_result(r) and _extract_prose_vote(str(r.get("review", "")), allow_tail_red=True) == "red"
+        for r in prose_results
+    )
+
+    block_reasons: list[str] = []
+    warn_statuses: list[str] = []
+    if any(nf is None for nf in norm_files):
+        block_reasons.append("unsafe_changed_file_path")
+    if valid_votes and (red_flags >= 2 or (red_flags * 2 >= len(valid_votes))):
+        block_reasons.append("heterogeneous_red_majority")
+    if red_team_vetoed:
+        block_reasons.append("red_team_veto")
+    if red_team_failed:
+        block_reasons.append("red_team_incomplete_or_timeout")
+        warn_statuses.append("WARN_INCOMPLETE")
+    if (len(executed_results) < 2) or (ok_count < max(2, len(executed_results) - 1)):
+        block_reasons.append("insufficient_models_succeeded")
+        warn_statuses.append("WARN_INCOMPLETE")
+    if not valid_votes:
+        block_reasons.append("no_valid_prose_votes")
+        warn_statuses.append("WARN_INCOMPLETE")
+    elif len(valid_votes) < 2:
+        block_reasons.append("insufficient_prose_votes")
+        warn_statuses.append("WARN_INCOMPLETE")
+    if len(valid_votes) >= 2 and len(unique_prose_providers) < 2:
+        block_reasons.append("insufficient_prose_diversity")
+        warn_statuses.append("WARN_INCOMPLETE")
+    if ok_executed and (len(truncated_roles) * 2 >= len(ok_executed)):
+        block_reasons.append("majority_diff_truncated")
+        warn_statuses.append("WARN_TRUNCATED")
+    if not red_team_present:
+        warn_statuses.append("WARN_RED_TEAM_ABSENT")
+
+    def _finalize_summary(base: dict[str, Any], base_verdict: str, fallback_block_reason: str = "base_decision_blocked") -> dict[str, Any]:
+        verdict = base_verdict
+        score = float(base.get("calibrated_score", 0.0))
+        if block_reasons:
+            verdict = "BLOCK"
+            cap = 0.35 if any(r in block_reasons for r in ("heterogeneous_red_majority", "red_team_veto")) else 0.4
+            score = round(min(score, cap), 3)
+            base["block_reason"] = block_reasons[0]
+            base["block_reasons"] = block_reasons
+        elif verdict == "BLOCK" and not base.get("block_reason"):
+            base["block_reason"] = fallback_block_reason
+            base["block_reasons"] = [fallback_block_reason]
+        if warn_statuses:
+            uniq_warns = list(dict.fromkeys(warn_statuses))
+            base["warn_status"] = uniq_warns[0]
+            base["warn_statuses"] = uniq_warns
+        base["calibrated_score"] = score
+        base["gate_verdict"] = verdict
+        base["base_decision_verdict"] = base_verdict
+        base["models_succeeded"] = f"{ok_count}/{len(executed_results)}"
+        base["prose_signals"] = {"green": green_flags, "yellow": yellow_flags, "red": red_flags}
+        base["abstain_votes"] = abstain_count
+        base["failed_roles"] = failed_roles
+        base["delegated_roles"] = delegated_roles
+        base["unique_prose_models"] = unique_prose_models
+        base["unique_prose_providers"] = unique_prose_providers
+        base["red_team_present"] = red_team_present
+        base["truncated_roles"] = truncated_roles
+        base["protected_scope_family"] = industry_family or "all"
+        base["cross_family_hits"] = cross_family_hits
+        return base
+
     jev = next((r for r in results if r.get("provider") == "typesafe" and r.get("status") == "ok" and r.get("jev_decision")), None)
     if jev:
         decision = jev["jev_decision"]
-        return {
+        return _finalize_summary({
             "engine": f"typesafe:{jev.get('responded_model')}",
             "calibrated_score": decision["score"],
-            "models_succeeded": f"{ok_count}/{len(results)}",
             "signals": {
                 "traffic_light": decision["light"],
                 "protected_harm": decision["protected_harm"],
                 "spec_shrink": decision["spec_shrink"],
             },
             "protected_domain_keywords_detected": touches_protected,
-            "gate_verdict": decision["verdict"],
             "request_id": jev.get("request_id"),
-        }
+        }, decision["verdict"])
 
     gm_dec = next((r for r in results if r.get("provider") in ("agy_decision_oauth", "gemini_decision_direct") and r.get("status") == "ok" and r.get("gemini_decision")), None)
     if gm_dec:
         decision = gm_dec["gemini_decision"]
-        return {
+        return _finalize_summary({
             "engine": f"gemini_decision_api:{gm_dec.get('responded_model')}",
             "calibrated_score": decision["score"],
-            "models_succeeded": f"{ok_count}/{len(results)}",
             "signals": {
                 "traffic_light": decision["light"],
                 "protected_harm": decision["protected_harm"],
                 "spec_shrink": decision["spec_shrink"],
             },
             "protected_domain_keywords_detected": touches_protected,
-            "gate_verdict": decision["verdict"],
             "request_id": gm_dec.get("request_id"),
-        }
+        }, decision["verdict"])
 
-    red_flags = sum(1 for r in results if "🔴" in str(r.get("review", "")))
-    yellow_flags = sum(1 for r in results if "🟡" in str(r.get("review", "")))
-    green_flags = sum(1 for r in results if "🟢" in str(r.get("review", "")))
     score = 1.0
     if touches_protected:
         score -= 0.15
@@ -1743,15 +2419,17 @@ def compute_local_gate_score(prompt: str, results: list[dict[str, Any]]) -> dict
     if yellow_flags > 0:
         score -= 0.05 * yellow_flags
     score = max(0.0, min(1.0, round(score, 3)))
-    verdict = "PASS" if (len(results) >= 5 and ok_count == len(results) and red_flags == 0 and score >= 0.75) else "BLOCK"
-    return {
+    base_verdict = (
+        "PASS"
+        if (len(executed_results) >= 4 and ok_count == len(executed_results) and len(valid_votes) >= 2 and red_flags == 0 and score >= 0.75)
+        else "BLOCK"
+    )
+    return _finalize_summary({
         "engine": "local_rule_summary_v1 (JEV unavailable)",
         "calibrated_score": score,
-        "models_succeeded": f"{ok_count}/{len(results)}",
         "signals": {"green": green_flags, "yellow": yellow_flags, "red": red_flags},
         "protected_domain_keywords_detected": touches_protected,
-        "gate_verdict": verdict,
-    }
+    }, base_verdict, fallback_block_reason="local_score_below_threshold")
 
 
 def main():
@@ -1763,6 +2441,8 @@ def main():
 
     p_plan = sub.add_parser("plan-skills", help="Preview dynamic Role-Scoped × Task-Aware skill bindings for a prompt")
     p_plan.add_argument("--prompt", type=str, required=True, help="Task prompt to classify and route")
+    p_plan.add_argument("--files", nargs="*", default=[], help="Changed file paths to weight skill routing")
+    p_plan.add_argument("--git-diff", action="store_true", help="Include git diff HEAD files and hunks")
 
     p_rev = sub.add_parser("review", help="Send prompt to all configured external heterogeneous models")
     p_rev.add_argument("--prompt", type=str, default="", help="Prompt text")
@@ -1787,10 +2467,19 @@ def main():
     args = parser.parse_args()
     env = load_secret_env()
     force_gm_api = bool(getattr(args, "force_gemini_api", False))
+    cli_prompt = (getattr(args, "prompt", "") or "").strip()
+    cli_prompt_file = (getattr(args, "prompt_file", "") or "").strip()
+    if cli_prompt_file:
+        pf = Path(cli_prompt_file)
+        if not pf.is_file():
+            print(json.dumps({"error": "prompt_file 不存在", "path": cli_prompt_file}, ensure_ascii=False))
+            raise SystemExit(2)
+        cli_prompt = (cli_prompt + "\n" + pf.read_text(encoding="utf-8")).strip()
     endpoints = build_endpoints(
         env,
         include_grok_api=bool(getattr(args, "include_grok_api", False)),
         force_gemini_api=force_gm_api,
+        prompt=cli_prompt,
     )
 
     if args.cmd == "grok-x":
@@ -1828,10 +2517,34 @@ def main():
         return
 
     if args.cmd == "plan-skills":
-        plan = plan_role_skill_matrix(args.prompt)
+        plan_diff = ""
+        if getattr(args, "git_diff", False):
+            try:
+                plan_diff = subprocess.check_output(
+                    ["git", "diff", "HEAD", "--", ".", ":(exclude)*.tsbuildinfo"],
+                    text=True,
+                    encoding="utf-8",
+                    errors="ignore",
+                )
+            except (OSError, subprocess.CalledProcessError) as exc:
+                print(f"[multi_model_gate] plan-skills git diff skipped: {exc}", file=sys.stderr)
+        plan = plan_role_skill_matrix(
+            args.prompt,
+            changed_files=(getattr(args, "files", None) or None),
+            diff_text=plan_diff,
+        )
         summary = {
+            "industry_family": plan["industry_family"],
             "detected_task_domains": plan["detected_task_domains"],
+            "changed_files": plan["changed_files"],
             "router_top_skills": plan["router_top_skills"],
+            "excluded_noise_skills": plan["excluded_noise_skills"],
+            "bughunter_plan": [
+                {"name": b["name"], "score": b["score"], "reason": b["reason"], "skill_path": b["skill_path"]}
+                for b in plan.get("bughunter_plan", [])
+            ],
+            "routing_confidence": plan["routing_confidence"],
+            "max_skills_per_role": plan["max_skills_per_role"],
             "has_graphify_report": plan["has_graphify_report"],
             "has_agents_rules": plan["has_agents_rules"],
             "role_skill_bindings": {
@@ -1880,18 +2593,67 @@ def main():
             prompt_text = Path(args.prompt_file).read_text(encoding="utf-8")
         raw_user_prompt = prompt_text
         diff_out = ""
+        diff_stat = ""
+        untracked_text = ""
         if args.git_diff or args.commit:
+            pathspecs = [str(p).strip() for p in (getattr(args, "paths", None) or []) if str(p).strip()]
+            if any(p.startswith(":") for p in pathspecs):
+                print(json.dumps({"error": "paths 禁用 pathspec 魔術語法（:(exclude) 等）"}, ensure_ascii=False))
+                raise SystemExit(2)
+            target_specs = pathspecs or [":/"]
+            exclude_specs = [":(exclude)*.tsbuildinfo"]
             try:
-                pathspecs = [str(p).strip() for p in (getattr(args, "paths", None) or []) if str(p).strip()]
-                exclude_specs = [":(exclude)*.tsbuildinfo"]
                 if args.commit:
-                    cmd = ["git", "show", "--format=", args.commit, "--", *(pathspecs or ["."]), *exclude_specs]
+                    cmd = ["git", "show", "--format=", args.commit, "--", *target_specs, *exclude_specs]
                     diff_out = subprocess.check_output(cmd, text=True, encoding="utf-8", errors="ignore")
+                    stat_cmd = ["git", "show", "--stat", "--format=", args.commit, "--", *target_specs, *exclude_specs]
+                    diff_stat = subprocess.check_output(stat_cmd, text=True, encoding="utf-8", errors="ignore").strip()
                 else:
-                    cmd = ["git", "diff", "HEAD", "--", *(pathspecs or ["."]), *exclude_specs]
+                    cmd = ["git", "diff", "HEAD", "--", *target_specs, *exclude_specs]
                     diff_out = subprocess.check_output(cmd, text=True, encoding="utf-8", errors="ignore")
+                    stat_cmd = ["git", "diff", "--stat", "HEAD", "--", *target_specs, *exclude_specs]
+                    diff_stat = subprocess.check_output(stat_cmd, text=True, encoding="utf-8", errors="ignore").strip()
+                    st_cmd = ["git", "status", "--short", "--untracked-files=normal"]
+                    if pathspecs:
+                        st_cmd.extend(["--", *pathspecs])
+                    st_out = subprocess.check_output(st_cmd, text=True, encoding="utf-8", errors="ignore")
+
+                    def _skip_untracked(line: str) -> bool:
+                        p = line[3:].strip().strip('"').replace("\\", "/").lower()
+                        parts = p.split("/")
+                        if any(seg in (".venv", "venv", "__pycache__", ".pytest_cache", "node_modules") for seg in parts):
+                            return True
+                        name = parts[-1] if parts else p
+                        return (
+                            name == ".env"
+                            or name.startswith(".env.")
+                            or "service_account" in p
+                            or "secret" in p
+                            or name.endswith((".pem", ".key", ".dpapi.xml"))
+                        )
+
+                    untracked_lines = [
+                        ln.strip()
+                        for ln in st_out.splitlines()
+                        if ln.startswith("?? ") and not _skip_untracked(ln)
+                    ]
+                    if untracked_lines:
+                        untracked_text = "\n".join(untracked_lines[:20])
+                        if len(untracked_lines) > 20:
+                            untracked_text += f"\n…(另有 {len(untracked_lines) - 20} 個未追蹤檔未列出)"
                 if diff_out.strip():
-                    prompt_text += "\n\n【真實 Git Diff】（未含未追蹤檔案）:\n```diff\n" + diff_out + "\n```"
+                    overview_parts = []
+                    if diff_stat:
+                        diff_stat_block = (
+                            diff_stat[:3000] + f"\n…(統計已截斷，原長 {len(diff_stat)} 字)"
+                            if len(diff_stat) > 3000
+                            else diff_stat
+                        )
+                        overview_parts.append("【Git Diff 統計總覽 (--stat)】:\n" + diff_stat_block)
+                    if untracked_text:
+                        overview_parts.append("【未追蹤檔案清單（未含於下方 Diff）】:\n" + untracked_text)
+                    overview_block = ("\n\n" + "\n\n".join(overview_parts)) if overview_parts else ""
+                    prompt_text += overview_block + "\n\n【真實 Git Diff】（未含未追蹤檔案）:\n```diff\n" + diff_out + "\n```"
                 else:
                     print(json.dumps({"error": "Git 差異為空，未送出會審；未追蹤檔案需另行提供"}, ensure_ascii=False))
                     raise SystemExit(1)
@@ -1909,14 +2671,26 @@ def main():
             skip=skip_rule_lint,
         )
 
-        skill_plan = plan_role_skill_matrix(raw_user_prompt)
+        review_files = [str(p).strip() for p in (getattr(args, "paths", None) or []) if str(p).strip()]
+        skill_plan = plan_role_skill_matrix(
+            raw_user_prompt,
+            changed_files=review_files or None,
+            diff_text=diff_out,
+        )
         results = []
         with concurrent.futures.ThreadPoolExecutor(max_workers=max(1, len(endpoints))) as ex:
             futs = [ex.submit(call_model, ep, prompt_text, skill_plan) for ep in endpoints]
             for f in concurrent.futures.as_completed(futs):
                 results.append(f.result())
 
-        local_summary = compute_local_gate_score(prompt_text, results)
+        local_summary = compute_local_gate_score(
+            prompt_text,
+            results,
+            raw_user_prompt=raw_user_prompt,
+            changed_files=skill_plan["changed_files"],
+            industry_family=skill_plan["industry_family"],
+        )
+        skill_attribution = compute_skill_attribution(results, skill_plan)
         if (
             not skip_rule_lint
             and isinstance(deterministic_lint, dict)
@@ -1934,7 +2708,15 @@ def main():
             "skill_binding_plan": {
                 "industry_family": skill_plan["industry_family"],
                 "detected_task_domains": skill_plan["detected_task_domains"],
+                "changed_files": skill_plan["changed_files"],
                 "router_top_skills": skill_plan["router_top_skills"],
+                "excluded_noise_skills": skill_plan["excluded_noise_skills"],
+                "bughunter_plan": [
+                    {"name": b["name"], "score": b["score"], "reason": b["reason"], "skill_path": b["skill_path"]}
+                    for b in skill_plan.get("bughunter_plan", [])
+                ],
+                "routing_confidence": skill_plan["routing_confidence"],
+                "max_skills_per_role": skill_plan["max_skills_per_role"],
                 "has_graphify_report": skill_plan["has_graphify_report"],
                 "has_agents_rules": skill_plan["has_agents_rules"],
                 "has_decisions_doc": skill_plan["has_decisions_doc"],
@@ -1942,6 +2724,7 @@ def main():
                     role: info["bound_skills"] for role, info in skill_plan["roles"].items()
                 },
             },
+            "skill_attribution": skill_attribution,
             "local_calibration": local_summary,
             "results": results,
         }

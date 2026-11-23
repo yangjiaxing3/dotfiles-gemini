@@ -1,0 +1,39 @@
+---
+description: "文件人機雙讀標準、/ponytail × /eli5 多 Agent 分工與互動式網頁版操作手冊三技能（來源：~/.gemini/rules/docs-and-manuals.md）"
+globs: "**/README.md,**/docs/**/*.md,**/docs/manuals/**,**/public/manuals/**"
+alwaysApply: false
+---
+
+# 文件人機雙讀與互動式網頁操作手冊規範
+
+> 按 Glob 載入。本檔承載全域文件與操作手冊詳細標準，避免塞爆專案 `DESIGN.md` 與 `AGENTS.md`。
+
+## 1. `README.md` 黃金人機雙讀標準
+
+- **上半部給人看（`/eli5` ＋ `/diagram-design`）**：
+  - 採 `/eli5` 四段白話架構：**一句話定位 → 生活類比 → 核心流程（2–4 步）→ 誰在用／主要入口**，讓非技術同仁 30 秒內讀懂系統價值。
+  - 搭配 `/diagram-design` 產出繁體中文視覺架構圖（存於 `docs/diagrams/*-zhtw.{html,svg,png}`，單圖限制 `nodes <= 9, edges <= 12`，`12px Noto Sans TC`）。
+- **下半部給 AI 與工程師看**：
+  - 先盤點全 Repo 真實結構與 `graphify` 節點，精準列出：**技術棧、目錄導航、啟動與測試指令、跨庫契約與不可妥協紅線**（純 AI 規則與詳細流程另放 `AGENTS.md`，架構決策索引放 `DECISIONS.md`）。
+
+## 2. `/ponytail` × `/eli5` 多 Agent 協作分工
+
+- **對內改碼與簡化架構走 `/ponytail`**：追求最小完整變更，受保護核心演算法禁區絕不縮水，刪減 `> 15` 行走 `multi_model_gate.py` 多模型會審。
+- **對外說明與交接走 `/eli5`**：新功能發布、PR 摘要、SOP、故障復盤與 `// shortcut:` 技術債解說，先用白話交代業務影響與前後差異，同時保留檔案路徑與 API 原文不稀釋精確契約。
+
+## 3. 互動式網頁版操作手冊三技能標準（`/eli5` × `/diagram-design` × `/e2e`）
+
+製作「零技術背景新人／跨部門同仁也能立刻上手」的互動式網頁操作手冊（獨立離線可開之 `docs/manuals/` 或 `public/manuals/` HTML + 內嵌圖片資產）時，強制結合三大技能：
+
+1. **`/eli5`（白話翻譯層）**：
+   - 嚴禁出現工程術語（API、JWT、Webhook、RBAC、SQLite 等）。
+   - 每頁強制四段式：**這頁在做什麼（一句話破題） → 生活類比 → 照著做 1-2-3（對齊紅框步驟） → 常見狀況與避坑提醒**。
+2. **`/diagram-design`（全系統視覺導覽圖）**：
+   - 產出全系統領域總覽圖＋核心交易／業務流雙圖（嚴守 `nodes <= 9, edges <= 12`、`12px Noto Sans TC`，通過 `self_check.py`、`verify-geometry.py` 並渲染 `@2x` PNG 內嵌）。
+3. **`/e2e`（隔離實機 Playwright 自動截圖 ＋ ①②③ 精準紅框標註）**：
+   - **安全紅線**：嚴禁連接正式資料庫或正式站做寫入示範！強制啟動隔離本地後端（如臨時 SQLite + 自動 Seed 示範資料）與隔離前端，跑完立即關閉並刪除臨時資料庫。
+   - **精準紅框座標**：於 Playwright 腳本透過 `locator.boundingBox()` 實測按鈕／區塊座標，直接在畫面上疊加醒目紅框與圓形編號角標 **①、②、③** 後截圖，並在截圖前確認 `consoleErrors === 0`、`pageErrors === 0`、中文零截斷、彈窗無遮擋。
+
+### 互動體驗與雙軌內容要求
+- **雙軌內容**：第一部「**新手 5 分鐘速成**」（全景圖＋高頻角色日常清單＋帳號權限速查表）；第二部「**全主選單 × 全子頁逐頁實操圖解**」。
+- **視覺與互動**：沿用專案自身官方 CIS 實色系（禁 Emoji、禁預設毛玻璃），提供**固定左側可搜尋章節目錄**（含當前章節高亮）、**點擊紅框截圖燈箱放大**、**步驟旁 FAQ 展開收合**，完成後以 Playwright 實開成品 HTML 檢查無破圖與互動正常。

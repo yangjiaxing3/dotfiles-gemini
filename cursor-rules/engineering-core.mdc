@@ -17,7 +17,10 @@ alwaysApply: true
 4. **確定性檢查與妥協留痕 (`shortcut:`)**：
    - 改碼後強制執行 `python scripts/rule_lint.py --git-diff`（無 `scripts/` 用 `~/.gemini/scripts/rule_lint.py --git-diff`）。
    - 無必要不寫註解，僅簡短解釋不變量「為什麼」。**嚴禁** `TODO:`／`FIXME:`／`HACK:`／`XXX:` 等逃生門註解；僅允許格式合規的 `// shortcut: <上限條件>, <何時該升級>`。
-5. **收尾誠實揭露與極簡執行回條 (Final-Turn Compact Lean-Triad Receipt)**：
+5. **任務結案白話總結與人機雙讀（`/eli5` × `/ponytail`）**：
+   - 對內改碼走 `/ponytail`，對外說明走 `/eli5`：每次完整任務交付的「**完成項目**」與「**重點任務總結**」（含 PR 摘要、SOP、故障復盤與 `// shortcut:` 說明），先用白話講清業務影響與前後差異，再保留檔案連結與 API 原文供工程追溯，絕不在演算法／契約層稀釋精度。
+   - 更新 `README.md` 採雙層標準：上半部給人看（`/eli5` 四段白話＋`/diagram-design` 中文架構圖 `nodes <= 9, edges <= 12`，30 秒看懂），下半部給 AI／工程師看（全庫真實目錄、啟動測試指令與跨庫紅線；詳見 `~/.gemini/memory/eli5_ponytail_readme_dual_reading.md`）。
+6. **收尾誠實揭露與極簡執行回條 (Final-Turn Compact Lean-Triad Receipt)**：
    - **🚫 嚴禁輸出回條之場景（防 Token 浪費）**：等待背景任務（`run_command` / `Shell` / subagent）完成的中繼進度回覆、純合併／部署狀態回報、澄清提問、純問答或閒聊，或**同一任務無新程式碼變更時，絕對禁止附上執行回條**。
    - **🚫 嚴禁正文與回條內容重複（Anti-Duplication Rule）**：回條每欄僅限填寫**關鍵字、路徑、行數或指令結果**（每欄 `<= 60` 字），**嚴禁把正文寫過的結論、PR 編號或背景敘述重抄進回條**；反之，已寫入回條的測試通過數、行數統計與略過邊界，正文**不再重複條列**。
    - **✅ 僅在「任務最終完成交付（Final Delivery Turn）」結尾輸出一次精簡逐行版回條**：

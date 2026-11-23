@@ -1,11 +1,11 @@
-# [Correct-Pattern] Storeasy 聯動家族（6-Repo Nexus）：允許跨 repo 修改與驗證
+# [Correct-Pattern] Storeasy 聯動家族（7-Repo Nexus）：允許跨 repo 修改與驗證
 
 ## 📌 Context
 
-授權日：2026-08-23（jiaxing 明示），2026-10-31 擴充為 6-Repo Nexus。
+授權日：2026-08-23（jiaxing 明示），2026-10-31 納編跨庫規範，2026-11-23 納入 `YangsDriver` 正式升級為 7-Repo Nexus（6 Web 系統 + 1 原生 Android 外勤車隊 App）。
 觸發：官網文章頁 404（例：`/news/mothers-day-收多易母親節活動首月只要520`）根因跨 FM CMS 與 `storeasynewwebsite` ISR；只改單一工作區無法完成驗證。
 
-Storeasy 不是孤立 repo。FM 寫入成功 ≠ 官網已更新。文章、定價、Hero、revalidate、共享 Turso、工務 CDC、人資財會 CDC 都必須雙邊一起改、雙邊一起驗證。
+Storeasy 不是孤立 repo。FM 寫入成功 ≠ 官網已更新。文章、定價、Hero、revalidate、共享 Turso、工務 CDC、人資財會 CDC 與外勤車隊 App（Firebase/R2 離線同步、`s_ino` 對位）都必須跨邊一起對齊、一起驗證。
 
 ---
 
@@ -13,12 +13,13 @@ Storeasy 不是孤立 repo。FM 寫入成功 ≠ 官網已更新。文章、定�
 
 1. 把 Boundary Sentinel 的「禁止跨出當前工作區」套用到 Storeasy sibling repo，然後停下來問使用者要不要開 `storeasynewwebsite` 或 `StoreasyFinHR`。
 2. 望文生義把 `Storeasyworkdivnew`（工務管理系統）誤當成排班/人資系統，而漏掉真正的財務與人事勞基法排班系統 **`StoreasyFinHR`**。
+3. 讓 `YangsDriver`（Android 原生外勤車隊 App）直寫 FM/FinHR Turso 庫，或擅自簡化其物理防呆感測演算法 `DrivingSignalProcessor.kt`。
 
 ---
 
 ## ✅ [Correct-Pattern 正確作法]
 
-當前工作區只要屬於 Storeasy 聯動家族，**不必再問**即可讀寫並驗證以下 6 個 sibling repo：
+當前工作區只要屬於 Storeasy 聯動家族，**不必再問**即可讀寫並驗證以下 7 個 sibling repo（6 Web 系統 + 1 原生 Android 外勤車隊 App）：
 
 | Repo | 業務定位與核心職責 | 本機 Port (Backend / Frontend) | 路徑 |
 |---|---|---|---|
@@ -28,19 +29,21 @@ Storeasy 不是孤立 repo。FM 寫入成功 ≠ 官網已更新。文章、定�
 | `STOREASY_IT` | 收多易 IT 資產全生命週期管理系統（採購、入庫、部署、盤點、報廢；發布 Turso `it_assets` 快照表） | `8001 / 5173` | `C:\Users\Jiaxing\Documents\GitHub\STOREASY_IT` |
 | `Storeasyworkdivnew` | 收多易**工務管理與工程數據中台**（工程報價單 AI 解析、採購工單 `workdiv_orders`、市場行情比價、廠商評鑑與據點工務映射；`workdiv` = 工務部，**嚴禁誤譯為排班/人資**） | `8002 / 5173` | `C:\Users\Jiaxing\Documents\GitHub\Storeasyworkdivnew` |
 | `StoreasyFinHR` | 收多易**財務與人事管理系統**（台灣勞基法規引擎 `labor_rules`、OR-Tools 決定性排班求解器 `seed=42`、考勤與加班費、38 欄薪資結算閉環；表名前綴 `finhr_`） | `8003 / 5103` | `C:\Users\Jiaxing\Documents\GitHub\StoreasyFinHR` |
+| `YangsDriver` | 收多易**車隊司機原生 Android 防呆駕駛座艙**（行程感測 `DrivingSignalProcessor.kt` / 簽收拍照 / R2 離線同步 / `08_driver_司機` CIS；走 Room/DataStore + Firebase Firestore + Cloudflare R2，**零直寫 FM/FinHR Turso 庫**） | `Android (GitHub Actions APK CI，無 Vercel)` | `C:\Users\Jiaxing\Documents\GitHub\YangsDriver` |
 
 仍禁止：無關專案、secrets 入庫、生產 DB 破壞性操作、未確認的 force-push。
 
 契約必讀：
 - `StoreasyFMnew/docs/architecture/storeasy-two-project-context.md`
 - `StoreasyFMnew/docs/architecture/shared-db-contract.md`
-- `StoreasyFMnew/docs/architecture/multi-project-linkage-contract.md`
+- `StoreasyFMnew/docs/architecture/multi-project-linkage-contract.md`（v1.5 含 `YangsDriver` 外圍車隊節點契約）
 - `StoreasyFMnew/docs/architecture/domain-identifier-contract.md`
 - `StoreasyFinHR/docs/architecture/finhr-family-context.md`
+- `YangsDriver/AGENTS.md`
 
 ---
 
-## 📌 Post-Mortem 補充（2026-10-17 & 2026-10-31：6-Repo Nexus 圖譜與契約紀律）
+## 📌 Post-Mortem 補充（2026-10-17、2026-10-31 & 2026-11-23：7-Repo Nexus 圖譜與契約紀律）
 
 ### ❌ [Anti-Pattern 錯誤模式]
 1. **直接修改官網靜態檔案繞過後台 CMS**：當使用者要求修改官網文案（如首頁/FAQ 禁放規定、Hero Banner、全站公告、優惠活動、分店價目表）時，只看 `storeasynewwebsite` 本地靜態檔就直接硬改，忽略了 `StoreasyFMnew` 的 CMS 編輯與 `revalidateTag` 管線。
