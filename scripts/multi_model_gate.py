@@ -922,7 +922,13 @@ def _send_chat_request(
 
 TASK_DOMAIN_KEYWORDS: dict[str, tuple[str, ...]] = {
     "debug": ("bug", "fix", "error", "crash", "exception", "死循環", "修不好", "除錯", "報錯", "修復", "失敗", "壞掉", "截斷", "異常"),
-    "data_analysis": ("數據", "分析", "統計", "報表", "圖表", "價格", "漲幅", "租金", "材積", "excel", "xlsx", "kpi", "bigquery", "d3", "分店實收", "月費", "fp&a", "預算", "定價", "估價", "毛利", "試算", "計價", "扣款"),
+    "data_analysis": (
+        "數據", "分析", "統計", "報表", "圖表", "價格", "漲幅", "租金", "材積",
+        "excel", "xlsx", "xlsm", "kpi", "bigquery", "d3", "分店實收", "月費",
+        "fp&a", "預算", "定價", "估價", "毛利", "試算", "計價", "扣款",
+        "薪資", "明細", "對帳", "勾稽", "傳票", "獎金", "出勤", "實發", "應發",
+        "差異分析", "reconciliation", "flux",
+    ),
     "ui_frontend": ("ui", "ux", "uiux", "css", "modal", "按鈕", "下拉選單", "版面", "美化", "設計", "react", "html", "樣式", "margin", "padding", "rwd", "3d", "sitemap", "canvas", "拖曳", "視角", "面板", "體驗"),
     "backend_api": ("api", "fastapi", "database", "turso", "sqlite", "schema", "後端", "端點", "session", "auth", "sql", "索引", "webhook", "驗簽", "upsert", "hmac"),
     "seo_content": ("seo", "gsc", "ga4", "關鍵字", "排名", "文案", "文章", "json-ld", "內鏈", "外鏈", "serp", "threads", "line oa", "官方帳號", "蝦皮", "momo", "行銷", "社群", "geo", "aeo", "rsa", "廣告", "capi", "gtm"),
@@ -930,7 +936,7 @@ TASK_DOMAIN_KEYWORDS: dict[str, tuple[str, ...]] = {
     "simplify_refactor": ("簡化", "精簡", "刪除", "移除", "重構", "ponytail", "重複", "死碼", "wrapper"),
 }
 
-# 角色工具配額收斂：每角色最多 4 個技能（雙固定底座 ponytail 家族 + security-audit/bughunter，加上 0~2 個高相關動態技能）
+# 角色工具配額收斂：每階段最多 4 個動態 Skills，按 Phase 啟動最適合之 Model × Skills × 元件，交棒即釋放
 MAX_SKILLS_PER_ROLE = 4
 
 ROLE_KEY_ALIASES: dict[str, str] = {
@@ -938,66 +944,138 @@ ROLE_KEY_ALIASES: dict[str, str] = {
     "Agent C & D-Refactor (qwen-max)": "Agent C & D-Refactor (qwen4-max-preview)",
 }
 
-# 依「角色 × 任務領域」動態切換的專屬技能矩陣 (Role-Scoped × Task-Aware Skill Matrix)
-# 雙固定底座設計：每個角色預設強制鎖定 [ponytail 家族, security-audit 或 bughunter]
+# 向後相容保留角色鍵表；不再對所有階段強行扣留 2 槽常駐底座，由 PHASE_LIFECYCLE_SPECS 按階段動態啟停
 ROLE_BASE_SKILLS: dict[str, list[str]] = {
-    "Agent 0 & E-Spec (deepseek-flash)": ["ponytail", "bughunter"],
-    "Agent Planner & Re-planner (gemini-4-carbon)": ["ponytail", "security-audit"],
-    "Agent Executor & QA (gemini-4-hydrogen)": ["ponytail", "security-audit"],
-    "Agent B Red Team (grok-4.7)": ["ponytail-review", "bughunter"],
-    "Agent C & D-Refactor (qwen4-max-preview)": ["ponytail", "security-audit"],
+    "Agent 0 & E-Spec (deepseek-flash)": [],
+    "Agent Planner & Re-planner (gemini-4-carbon)": [],
+    "Agent Executor & QA (gemini-4-hydrogen)": [],
+    "Agent Executor Verify (gemini-4-hydrogen)": ["tdd-workflow"],
+    "Agent B Red Team (grok-4.7)": ["ponytail-review"],
+    "Agent C & D-Refactor (qwen4-max-preview)": ["ponytail-review"],
     "Agent Decision (jev-1.13.0)": ["ponytail-review", "security-audit"],
 }
 
+PHASE_LIFECYCLE_SPECS: list[dict[str, Any]] = [
+    {
+        "phase": "0",
+        "title": "邊界守門與脫敏探勘",
+        "role_key": "Agent 0 & E-Spec (deepseek-flash)",
+        "router_role": "agent_0",
+        "primary_model": "deepseek-flash",
+        "fallback_model": "gemini-4-carbon-high",
+        "anchor_skills": [],
+        "release_on_exit": ["deepseek-flash", "boundary-sentinel", "bughunter", "原始檔個資掃描器"],
+    },
+    {
+        "phase": "A",
+        "title": "唯讀定計與契約規劃",
+        "role_key": "Agent Planner & Re-planner (gemini-4-carbon)",
+        "router_role": "planner",
+        "primary_model": "gemini-4-neon-xhigh",
+        "fallback_model": "gemini-4-carbon-high",
+        "anchor_skills": [],
+        "release_on_exit": ["graphify", "writing-plans", "唯讀結構探索視窗"],
+    },
+    {
+        "phase": "B",
+        "title": "紅隊挑刺與量化裁決",
+        "role_key": "Agent B Red Team (grok-4.7)",
+        "router_role": "red_team",
+        "primary_model": "grok-4.7",
+        "fallback_model": "qwen4-max-preview",
+        "anchor_skills": ["ponytail-review"],
+        "release_on_exit": ["grok-4.7", "bughunter", "hunt-* 專項漏洞庫"],
+    },
+    {
+        "phase": "C1",
+        "title": "實作建構 (Build)",
+        "role_key": "Agent Executor & QA (gemini-4-hydrogen)",
+        "router_role": "executor_build",
+        "primary_model": "gemini-4-hydrogen-xhigh",
+        "fallback_model": "qwen4-max-preview",
+        "anchor_skills": [],
+        "release_on_exit": ["實作領域樣板", "本地公式寫入與轉譯工具", "BUILD 階段上下文"],
+    },
+    {
+        "phase": "C2",
+        "title": "驗證測試 (Verify)",
+        "role_key": "Agent Executor Verify (gemini-4-hydrogen)",
+        "router_role": "executor_verify",
+        "primary_model": "gemini-4-hydrogen-xhigh",
+        "fallback_model": "qwen4-max-preview",
+        "anchor_skills": ["tdd-workflow"],
+        "release_on_exit": ["tdd-workflow", "agent-tester", "測試回歸腳本環境"],
+    },
+    {
+        "phase": "D",
+        "title": "終審收斂與白話交付",
+        "role_key": "Agent C & D-Refactor (qwen4-max-preview)",
+        "router_role": "refactor",
+        "primary_model": "qwen4-max-preview",
+        "fallback_model": "deepseek-flash",
+        "anchor_skills": ["ponytail-review"],
+        "release_on_exit": ["qwen4-max-preview", "ponytail-review", "全流程技能鎖定"],
+    },
+]
+
 ROLE_TASK_SKILLS: dict[str, dict[str, list[str]]] = {
     "Agent 0 & E-Spec (deepseek-flash)": {
-        "debug": ["fixer-prompt", "agent-tester"],
-        "data_analysis": ["data-autocleaning", "schema-mapping", "agency-sales-data-extraction-agent"],
+        "debug": ["fixer-prompt", "agent-tester", "boundary-sentinel"],
+        "data_analysis": ["spreadsheet-reconciliation", "accidental-data-loss-prevention", "agency-sales-data-extraction-agent", "boundary-sentinel"],
         "ui_frontend": ["web-design-guidelines", "modern-web-guidance", "webapp-testing", "agent-desktop"],
-        "backend_api": ["security-audit", "agency-testing-api-tester"],
+        "backend_api": ["security-audit", "agency-testing-api-tester", "boundary-sentinel"],
         "seo_content": ["seo-workflow-rules", "technical-seo-checker", "agency-paid-media-tracking-specialist"],
         "ops_management": ["agency-project-management-jira-workflow-steward", "agency-support-infrastructure-maintainer"],
-        "simplify_refactor": ["ponytail-debt", "verification-quality"],
+        "simplify_refactor": ["ponytail-debt", "verification-quality", "boundary-sentinel"],
     },
     "Agent Planner & Re-planner (gemini-4-carbon)": {
-        "debug": ["agency-engineering-codebase-onboarding-engineer", "fixer-prompt", "diagram-design"],
-        "data_analysis": ["agency-data-consolidation-agent", "storeasy-mini-warehouse-viz", "diagram-design"],
+        "debug": ["agency-engineering-codebase-onboarding-engineer", "fixer-prompt", "graphify", "diagram-design"],
+        "data_analysis": ["spreadsheet-reconciliation", "agency-data-consolidation-agent", "graphify", "storeasy-mini-warehouse-viz"],
         "ui_frontend": ["design-taste-frontend", "stageshow", "modern-web-guidance", "diagram-design"],
-        "backend_api": ["agency-engineering-backend-architect", "agent-arch-system-design", "diagram-design"],
+        "backend_api": ["agency-engineering-backend-architect", "agent-arch-system-design", "graphify", "diagram-design"],
         "seo_content": ["agency-marketing-data-seo-engineer", "agency-marketing-geo-aeo-specialist"],
         "ops_management": ["agency-agents-orchestrator", "agency-testing-workflow-optimizer", "diagram-design"],
-        "simplify_refactor": ["ponytail-audit", "diagram-design", "stage-gate-review"],
+        "simplify_refactor": ["ponytail-audit", "graphify", "diagram-design", "stage-gate-review"],
     },
     "Agent Executor & QA (gemini-4-hydrogen)": {
-        "debug": ["agent-tester", "fixer-prompt"],
-        "data_analysis": ["d3-data-visualization", "xlsx", "agency-support-analytics-reporter"],
-        "ui_frontend": ["impeccable", "frontend-design", "modern-web-guidance", "agent-desktop"],
-        "backend_api": ["fastapi-templates", "agency-testing-api-tester"],
+        "debug": ["fixer-prompt", "fastapi-templates", "ponytail"],
+        "data_analysis": ["xlsx", "spreadsheet-reconciliation", "agency-data-consolidation-agent", "fastapi-templates"],
+        "ui_frontend": ["impeccable", "frontend-design", "modern-web-guidance", "stageshow"],
+        "backend_api": ["fastapi-templates", "agent-dev-backend-api", "ponytail", "agency-engineering-database-optimizer"],
         "seo_content": ["agency-marketing-seo-specialist", "agency-taiwan-zh-hant-editor"],
         "ops_management": ["agency-data-consolidation-agent", "agency-testing-workflow-optimizer"],
-        "simplify_refactor": ["agent-tester", "webapp-testing"],
+        "simplify_refactor": ["ponytail", "subagent-driven-development", "fastapi-templates"],
+    },
+    "Agent Executor Verify (gemini-4-hydrogen)": {
+        "debug": ["agent-tester", "verification-quality", "fixer-prompt"],
+        "data_analysis": ["agent-tester", "agency-testing-api-tester", "verification-quality"],
+        "ui_frontend": ["agent-desktop", "webapp-testing", "e2e", "verification-quality"],
+        "backend_api": ["agent-tester", "agency-testing-api-tester", "verification-quality"],
+        "seo_content": ["technical-seo-checker", "verification-quality"],
+        "ops_management": ["verification-quality", "agency-testing-api-tester"],
+        "simplify_refactor": ["agent-tester", "verification-quality", "webapp-testing"],
     },
     "Agent B Red Team (grok-4.7)": {
         "debug": ["fixer-prompt", "agent-code-analyzer", "agent-performance-optimizer"],
-        "data_analysis": ["agency-support-analytics-reporter", "agency-sales-data-extraction-agent", "ml-best-practices", "xlsx"],
+        "data_analysis": ["spreadsheet-reconciliation", "xlsx", "accidental-data-loss-prevention", "agency-support-analytics-reporter"],
         "ui_frontend": ["web-design-guidelines", "modern-web-guidance", "agency-testing-accessibility-auditor", "design-taste-frontend"],
         "backend_api": ["security-audit", "agency-testing-api-tester", "agency-engineering-database-optimizer"],
         "seo_content": ["content-quality-auditor", "agency-taiwan-zh-hant-editor", "storeasy-seo-looping"],
         "ops_management": ["agency-testing-workflow-optimizer", "agency-support-analytics-reporter", "agency-taiwan-zh-hant-editor"],
-        "simplify_refactor": ["ponytail-review", "security-audit", "stage-gate-review"],
+        "simplify_refactor": ["security-audit", "stage-gate-review", "agency-engineering-code-reviewer"],
     },
     "Agent C & D-Refactor (qwen4-max-preview)": {
-        "debug": ["fixer-prompt", "tdd-workflow"],
-        "data_analysis": ["xlsx", "agency-support-analytics-reporter", "agency-data-consolidation-agent"],
-        "ui_frontend": ["impeccable", "agency-engineering-frontend-developer", "emil-design-eng", "modern-web-guidance"],
-        "backend_api": ["fastapi-templates", "agent-dev-backend-api"],
-        "seo_content": ["agency-marketing-growth-hacker", "agency-paid-media-creative-strategist", "agency-taiwan-zh-hant-editor"],
-        "ops_management": ["agency-testing-workflow-optimizer", "agency-taiwan-b2b-sales-writer", "agency-academic-study-planner"],
-        "simplify_refactor": ["ponytail", "writing-plans", "subagent-driven-development"],
+        "debug": ["fixer-prompt", "verification-quality", "eli5"],
+        "data_analysis": ["spreadsheet-reconciliation", "eli5", "verification-quality", "xlsx"],
+        "ui_frontend": ["impeccable", "agency-engineering-frontend-developer", "emil-design-eng", "eli5"],
+        "backend_api": ["verification-quality", "ponytail", "eli5"],
+        "seo_content": ["agency-marketing-growth-hacker", "agency-taiwan-zh-hant-editor", "humanizer-zh-tw"],
+        "ops_management": ["agency-testing-workflow-optimizer", "eli5", "verification-quality"],
+        "simplify_refactor": ["ponytail", "verification-quality", "eli5"],
     },
     "Agent Decision (jev-1.13.0)": {
         "debug": ["fixer-prompt", "verification-quality"],
-        "data_analysis": ["agency-support-analytics-reporter", "agency-sales-data-extraction-agent", "verification-quality"],
+        "data_analysis": ["spreadsheet-reconciliation", "agency-support-analytics-reporter", "verification-quality"],
         "ui_frontend": ["web-design-guidelines", "modern-web-guidance", "verification-quality"],
         "backend_api": ["security-audit", "verification-quality"],
         "seo_content": ["content-quality-auditor", "agency-taiwan-zh-hant-editor", "verification-quality"],
@@ -1039,7 +1117,7 @@ US3C_PROMPT_KEYWORDS = (
 ROLE_TASK_SKILLS_US3C: dict[str, dict[str, list[str]]] = {
     "Agent 0 & E-Spec (deepseek-flash)": {
         "debug": ["fixer-prompt", "agent-tester", "us3c-kiosk-driver-ops"],
-        "data_analysis": ["us3c-tradein-margin-pricing", "agency-sales-data-extraction-agent", "schema-mapping"],
+        "data_analysis": ["us3c-tradein-margin-pricing", "spreadsheet-reconciliation", "agency-sales-data-extraction-agent"],
         "ui_frontend": ["web-design-guidelines", "modern-web-guidance", "webapp-testing", "agent-desktop"],
         "backend_api": ["security-audit", "us3c-imcheck-device-qc", "agency-testing-api-tester"],
         "seo_content": ["us3c-seo-loop", "seo-audit", "technical-seo-checker"],
@@ -1056,31 +1134,40 @@ ROLE_TASK_SKILLS_US3C: dict[str, dict[str, list[str]]] = {
         "simplify_refactor": ["ponytail-audit", "diagram-design", "stage-gate-review"],
     },
     "Agent Executor & QA (gemini-4-hydrogen)": {
-        "debug": ["agent-tester", "us3c-kiosk-driver-ops"],
-        "data_analysis": ["d3-data-visualization", "xlsx", "agency-support-analytics-reporter"],
-        "ui_frontend": ["impeccable", "frontend-design", "modern-web-guidance", "agent-desktop"],
-        "backend_api": ["us3c-imcheck-device-qc", "agency-testing-api-tester"],
+        "debug": ["fixer-prompt", "fastapi-templates", "ponytail"],
+        "data_analysis": ["xlsx", "spreadsheet-reconciliation", "agency-data-consolidation-agent", "fastapi-templates"],
+        "ui_frontend": ["impeccable", "frontend-design", "modern-web-guidance", "stageshow"],
+        "backend_api": ["fastapi-templates", "agent-dev-backend-api", "ponytail", "agency-engineering-database-optimizer"],
         "seo_content": ["us3c-seo-loop", "agent-reach", "agency-taiwan-zh-hant-editor"],
         "ops_management": ["us3c-kiosk-driver-ops", "sop-lesson", "us3c-swarm"],
-        "simplify_refactor": ["agent-tester", "webapp-testing"],
+        "simplify_refactor": ["ponytail", "subagent-driven-development"],
+    },
+    "Agent Executor Verify (gemini-4-hydrogen)": {
+        "debug": ["agent-tester", "us3c-kiosk-driver-ops", "verification-quality"],
+        "data_analysis": ["agent-tester", "agency-testing-api-tester", "verification-quality"],
+        "ui_frontend": ["agent-desktop", "webapp-testing", "e2e", "verification-quality"],
+        "backend_api": ["us3c-imcheck-device-qc", "agency-testing-api-tester", "verification-quality"],
+        "seo_content": ["technical-seo-checker", "verification-quality"],
+        "ops_management": ["us3c-kiosk-driver-ops", "verification-quality"],
+        "simplify_refactor": ["agent-tester", "webapp-testing", "verification-quality"],
     },
     "Agent B Red Team (grok-4.7)": {
         "debug": ["fixer-prompt", "us3c-kiosk-driver-ops", "agent-code-analyzer"],
-        "data_analysis": ["us3c-tradein-margin-pricing", "agency-sales-data-extraction-agent", "ml-best-practices", "xlsx"],
+        "data_analysis": ["us3c-tradein-margin-pricing", "spreadsheet-reconciliation", "xlsx", "agency-sales-data-extraction-agent"],
         "ui_frontend": ["web-design-guidelines", "modern-web-guidance", "agency-testing-accessibility-auditor", "design-taste-frontend"],
         "backend_api": ["security-audit", "us3c-imcheck-device-qc", "agency-testing-api-tester"],
         "seo_content": ["us3c-seo-loop", "social-listening-brief", "content-quality-auditor", "agency-taiwan-zh-hant-editor"],
         "ops_management": ["us3c-kiosk-driver-ops", "critical-stress-test", "agency-testing-workflow-optimizer"],
-        "simplify_refactor": ["ponytail-review", "security-audit", "stage-gate-review"],
+        "simplify_refactor": ["security-audit", "stage-gate-review", "agency-engineering-code-reviewer"],
     },
     "Agent C & D-Refactor (qwen4-max-preview)": {
-        "debug": ["fixer-prompt", "tdd-workflow", "us3c-kiosk-driver-ops"],
-        "data_analysis": ["us3c-tradein-margin-pricing", "xlsx", "agency-support-analytics-reporter"],
+        "debug": ["fixer-prompt", "verification-quality", "us3c-kiosk-driver-ops"],
+        "data_analysis": ["us3c-tradein-margin-pricing", "spreadsheet-reconciliation", "eli5", "xlsx"],
         "ui_frontend": ["impeccable", "agency-engineering-frontend-developer", "emil-design-eng", "modern-web-guidance"],
-        "backend_api": ["us3c-imcheck-device-qc", "fastapi-templates", "agent-dev-backend-api"],
+        "backend_api": ["us3c-imcheck-device-qc", "verification-quality", "ponytail"],
         "seo_content": ["us3c-seo-loop", "skillorchestrator", "agency-taiwan-zh-hant-editor"],
         "ops_management": ["us3c-kiosk-driver-ops", "sop-lesson", "agency-testing-workflow-optimizer"],
-        "simplify_refactor": ["ponytail", "writing-plans", "subagent-driven-development"],
+        "simplify_refactor": ["ponytail", "verification-quality", "eli5"],
     },
     "Agent Decision (jev-1.13.0)": {
         "debug": ["fixer-prompt", "verification-quality"],
@@ -1338,6 +1425,9 @@ def _is_skill_allowed_for_context(
             return False
     if s_low == "xlsx" and not has_spreadsheet_signal:
         return False
+    if s_low == "spreadsheet-reconciliation" and not has_spreadsheet_signal:
+        if not prompt_and_files_low or not re.search(r"對帳|勾稽|薪資|獎金|傳票|差異分析|reconcil|flux|cross.?foot", prompt_and_files_low):
+            return False
     if s_low.startswith(("gcp-", "dbt-")):
         if not prompt_and_files_low or not re.search(r"\b(?:gcp|bigquery|dbt|spark|dataflow|composer)\b", prompt_and_files_low):
             return False
@@ -1360,13 +1450,70 @@ def _is_skill_allowed_for_context(
     return True
 
 
+def _select_phase_components(
+    phase: str,
+    domains: list[str],
+    file_signals: dict[str, Any],
+    *,
+    has_spreadsheet_signal: bool,
+    has_security_surface: bool,
+    bughunter_plan: list[dict[str, Any]],
+) -> list[str]:
+    """依目前階段與任務訊號挑選最適合啟動之確定性元件（交棒即釋放）。"""
+    comps: list[str] = []
+    has_frontend = bool(file_signals.get("has_frontend")) or "ui_frontend" in domains
+    has_code = bool(
+        file_signals.get("has_backend_python")
+        or file_signals.get("has_frontend")
+        or file_signals.get("has_tests")
+    )
+    if phase == "0":
+        comps.append("check_sensitive_paths.py")
+        if has_spreadsheet_signal:
+            comps.append(".agents/skills/xlsx/scripts/xlsx_ingest_profiler.py --mask-pii")
+        if has_security_surface or bughunter_plan:
+            comps.append("skill_router.select_bughunter_skills")
+    elif phase == "A":
+        comps.extend(["graphify query/path", "DECISIONS.md 契約索引"])
+        if has_spreadsheet_signal:
+            comps.append("Evidence Table & No-Plug 勾稽規格")
+    elif phase == "B":
+        if has_spreadsheet_signal:
+            comps.append("recalc.py --audit-only (靜態公式/快取掃描)")
+        if bughunter_plan or has_security_surface:
+            comps.append("Claude-BugHunter Vault + Decision API")
+        else:
+            comps.append("Decision API 量化門禁")
+    elif phase == "C1":
+        if has_spreadsheet_signal:
+            comps.extend([
+                ".agents/skills/xlsx/recalc.py",
+                ".agents/skills/xlsx/scripts/formula_engine_hub.py",
+                ".agents/skills/xlsx/scripts/hyperformula_eval.js",
+            ])
+        elif has_frontend:
+            comps.append("Vite / React + DESIGN.md CSS tokens")
+        else:
+            comps.append("FastAPI / SQLAlchemy Service Layer")
+    elif phase == "C2":
+        if has_code or "backend_api" in domains or "data_analysis" in domains:
+            comps.append("pytest + rule_lint.py --git-diff")
+        if has_frontend:
+            comps.append("npx tsc --noEmit + vitest + agent-desktop")
+        if has_spreadsheet_signal:
+            comps.append("recalc.py --audit-only + 純記憶體試匯入對平")
+    elif phase == "D":
+        comps.extend(["multi_model_gate.py review", "graphify update .", "SESSION-HANDOFF.md"])
+    return comps
+
+
 def plan_role_skill_matrix(
     prompt: str,
     *,
     changed_files: list[str] | None = None,
     diff_text: str = "",
 ) -> dict[str, Any]:
-    """根據任務 Prompt、異動檔案路徑與 Diff 動態計算每個 Agent 角色之雙固定底座 + 0~2 動態 Skills（上限 4）。"""
+    """依 Phase 動態啟動並釋放最適合之 Model × Skills × 元件（同時維持角色綁定矩陣向後相容）。"""
     merged_files = list(changed_files or [])
     if extract_files_from_diff is not None and diff_text:
         for df in extract_files_from_diff(diff_text):
@@ -1395,7 +1542,7 @@ def plan_role_skill_matrix(
         )
     )
     has_spreadsheet_signal = bool(file_signals.get("has_data")) or bool(
-        re.search(r"\b(xlsx?|xlsm|csv)\b|excel|試算表|巨集樣板", p_low)
+        re.search(r"\b(xlsx?|xlsm|csv)\b|excel|試算表|巨集樣板|薪資明細|對帳|勾稽", p_low)
     )
     pure_backend_mode = (
         bool(file_signals.get("is_pure_backend_python"))
@@ -1443,42 +1590,54 @@ def plan_role_skill_matrix(
 
     ws_ctx = _load_workspace_context_snippets()
     role_plans: dict[str, dict[str, Any]] = {}
+    phase_lifecycle: list[dict[str, Any]] = []
+    has_security_surface = bool(file_signals.get("has_security_surface"))
+    has_code_files = bool(
+        file_signals.get("has_backend_python")
+        or file_signals.get("has_frontend")
+        or file_signals.get("has_tests")
+    )
+    explicit_eli5_q = bool(re.search(r"eli5|白話|副駕|readme|外行|直覺|財務溝通", p_low))
 
-    for role, base_list in ROLE_BASE_SKILLS.items():
+    def _assemble_role_skills(
+        role_key: str,
+        router_role: str,
+        anchor_skills: list[str],
+        phase_code: str,
+    ) -> list[str]:
         combined: list[str] = []
-        # 1) 雙固定底座：ponytail 家族 + security-audit/bughunter（純文件且無安全要求時自動降載資安工具）
-        for s_name in base_list:
-            if is_docs_only and not explicit_security_q and s_name in {"bughunter", "security-audit"}:
+        # 1) 僅注入該階段真正需要的最小錨點（不再全週期硬佔 2~3 槽）
+        for s_name in anchor_skills:
+            if is_docs_only and not explicit_security_q and s_name in {"bughunter", "security-audit", "tdd-workflow"}:
+                continue
+            if skill_map and s_name not in skill_map:
                 continue
             if s_name not in combined:
                 combined.append(s_name)
-        if is_docs_only and not explicit_security_q and "decisions-governance" not in combined:
-            combined.append("decisions-governance")
 
-        # 1.5) 程式碼任務對 Executor 保護 TDD 測試安全網（保留 1 個動態槽位給 tdd-workflow）
-        has_code_files = bool(
-            file_signals.get("has_backend_python")
-            or file_signals.get("has_frontend")
-            or file_signals.get("has_tests")
-        )
-        if (
-            not is_docs_only
-            and has_code_files
-            and role == "Agent Executor & QA (gemini-4-hydrogen)"
-            and "tdd-workflow" not in combined
-            and len(combined) < MAX_SKILLS_PER_ROLE
-        ):
-            combined.append("tdd-workflow")
+        # 2) 按需情境保護（只在相應階段啟動，交棒即釋放）
+        if phase_code in {"0", "B"} and not is_docs_only:
+            sec_anchor = "bughunter" if (has_security_surface or explicit_security_q or has_spreadsheet_signal) else ""
+            if sec_anchor and (not skill_map or sec_anchor in skill_map) and sec_anchor not in combined and len(combined) < MAX_SKILLS_PER_ROLE:
+                combined.append(sec_anchor)
+        if phase_code == "0" and is_docs_only and not explicit_security_q:
+            if "decisions-governance" not in combined and (not skill_map or "decisions-governance" in skill_map):
+                combined.append("decisions-governance")
+        if phase_code == "D" and (explicit_eli5_q or "data_analysis" in domains) and "eli5" not in combined:
+            if (not skill_map or "eli5" in skill_map) and len(combined) < MAX_SKILLS_PER_ROLE:
+                combined.append("eli5")
 
-        # 2) 動態候選 0~2 個：優先由角色正交 + 檔案加權 SkillRouter 篩出高分技能（寧缺勿濫）
+        # 3) 由角色正交 + 檔案加權 SkillRouter 動態挑選最對題技能
+        reserve_sec_c1 = phase_code == "C1" and (has_security_surface or explicit_security_q) and not is_docs_only
+        route_limit = MAX_SKILLS_PER_ROLE - 1 if reserve_sec_c1 else MAX_SKILLS_PER_ROLE
         if router_obj is not None:
             try:
                 role_diag = router_obj.route_with_diagnostics(
                     prompt,
-                    top_k=3,
+                    top_k=4,
                     changed_files=merged_files or None,
                     diff_text="",
-                    role=role,
+                    role=router_role,
                     min_score=6.0,
                     relative_cutoff=role_rel_cutoff,
                     include_bughunter=False,
@@ -1487,8 +1646,10 @@ def plan_role_skill_matrix(
                     excluded_noise_map.setdefault(ex_item["skill"], ex_item["reason"])
                 for r in role_diag.get("results", []):
                     s_name = r["name"]
-                    if len(combined) >= MAX_SKILLS_PER_ROLE:
+                    if len(combined) >= route_limit:
                         break
+                    if s_name in {"tdd-workflow", "agent-tester"} and router_role == "executor_build":
+                        continue
                     if s_name not in combined and _is_skill_allowed_for_context(
                         s_name,
                         pure_backend_mode=pure_backend_mode,
@@ -1499,21 +1660,23 @@ def plan_role_skill_matrix(
                     ):
                         combined.append(s_name)
             except Exception as exc:
-                print(f"[multi_model_gate] role route skipped for {role}: {exc}", file=sys.stderr)
+                print(f"[multi_model_gate] role route skipped for {role_key}: {exc}", file=sys.stderr)
 
-        # 3) 角色專屬靜態領域補位（純文件修改不從業務硬體靜態表補位；其餘亦須通過負向排除與配額上限）
-        if len(combined) < MAX_SKILLS_PER_ROLE and not is_docs_only:
-            static_cap = 1 if (domains == ["simplify_refactor"] and not merged_files) else MAX_SKILLS_PER_ROLE
+        # 4) 領域精準補位（禁止幽靈技能佔槽）
+        if len(combined) < route_limit and not is_docs_only:
+            static_cap = 1 if (domains == ["simplify_refactor"] and not merged_files and phase_code not in {"C1", "C2"}) else MAX_SKILLS_PER_ROLE
             added_static = 0
-            # 當同時有 backend_api 與 data_analysis 且無實際試算表檔案時，優先 backend_api
             ordered_domains = list(domains)
             if not has_spreadsheet_signal and "backend_api" in ordered_domains:
                 ordered_domains = ["backend_api"] + [d for d in ordered_domains if d != "backend_api"]
             for dom in ordered_domains:
-                for s_name in active_task_matrix.get(role, {}).get(dom, []):
-                    if len(combined) >= MAX_SKILLS_PER_ROLE or added_static >= static_cap:
+                for s_name in active_task_matrix.get(role_key, {}).get(dom, []):
+                    if len(combined) >= route_limit or added_static >= static_cap:
                         break
                     if s_name in combined:
+                        continue
+                    if skill_map and s_name not in skill_map:
+                        excluded_noise_map.setdefault(s_name, "missing_from_active_skill_map")
                         continue
                     if not _is_skill_allowed_for_context(
                         s_name,
@@ -1528,16 +1691,85 @@ def plan_role_skill_matrix(
                     combined.append(s_name)
                     added_static += 1
 
-        combined = combined[:MAX_SKILLS_PER_ROLE]
+        # 5) C1 若觸及安全敏感面且尚有預留槽，按需掛載 1 槽 security-audit（否則 0 佔用）
+        if reserve_sec_c1 and "security-audit" not in combined and len(combined) < MAX_SKILLS_PER_ROLE:
+            if not skill_map or "security-audit" in skill_map:
+                combined.append("security-audit")
+
+        return combined[:MAX_SKILLS_PER_ROLE]
+
+    for spec in PHASE_LIFECYCLE_SPECS:
+        ph = spec["phase"]
+        role_key = spec["role_key"]
+        bound = _assemble_role_skills(
+            role_key=role_key,
+            router_role=spec["router_role"],
+            anchor_skills=list(spec["anchor_skills"]),
+            phase_code=ph,
+        )
         snippets = [
             _extract_skill_snippet(skill_map[s_name])
-            for s_name in combined
+            for s_name in bound
             if s_name in skill_map
         ]
-        role_plans[role] = {
-            "bound_skills": combined,
+        comps = _select_phase_components(
+            ph,
+            domains,
+            file_signals,
+            has_spreadsheet_signal=has_spreadsheet_signal,
+            has_security_surface=has_security_surface,
+            bughunter_plan=bughunter_plan,
+        )
+        role_plans[role_key] = {
+            "phase": ph,
+            "model": spec["primary_model"],
+            "bound_skills": bound,
+            "activate_components": comps,
+            "release_on_exit": list(spec["release_on_exit"]),
             "skill_snippets": snippets,
         }
+        phase_lifecycle.append({
+            "phase": ph,
+            "title": spec["title"],
+            "role": role_key,
+            "model": spec["primary_model"],
+            "fallback_model": spec["fallback_model"],
+            "activate_skills": bound,
+            "activate_components": comps,
+            "release_on_exit": list(spec["release_on_exit"]),
+        })
+
+    # 確保 Decision 裁判端點角色亦有對應綁定，維持 multi_model_gate review 完整運作
+    for dec_role in (
+        "Agent Decision (jev-1.13.0)",
+        "Agent Decision (gemini-decision-api)",
+        "Agent Decision (gpt-5-mini fallback)",
+    ):
+        dec_bound = _assemble_role_skills(
+            role_key=dec_role,
+            router_role="decision",
+            anchor_skills=list(ROLE_BASE_SKILLS.get(dec_role, ["ponytail-review", "security-audit"])),
+            phase_code="DECISION",
+        )
+        role_plans[dec_role] = {
+            "phase": "B-Decision",
+            "model": dec_role,
+            "bound_skills": dec_bound,
+            "activate_components": ["Decision API JSON 結構化燈號"],
+            "release_on_exit": ["Decision API 投票上下文"],
+            "skill_snippets": [
+                _extract_skill_snippet(skill_map[s_name])
+                for s_name in dec_bound
+                if s_name in skill_map
+            ],
+        }
+
+    # 若既有 Executor 呼叫未傳 --phase，補充其 C2 測試技能清單供參考而不佔 C1 槽位
+    if "Agent Executor & QA (gemini-4-hydrogen)" in role_plans and "Agent Executor Verify (gemini-4-hydrogen)" in role_plans:
+        role_plans["Agent Executor & QA (gemini-4-hydrogen)"]["verify_phase_skills"] = role_plans[
+            "Agent Executor Verify (gemini-4-hydrogen)"
+        ]["bound_skills"]
+        role_plans["Agent Executor & QA (gemini-4-hydrogen)"]["has_code_files"] = has_code_files
 
     confidence_level = "high" if (top_route_score >= 15.0 or (merged_files and top_route_score >= 8.0)) else (
         "medium" if top_route_score >= 5.0 else "baseline"
@@ -1563,6 +1795,7 @@ def plan_role_skill_matrix(
         "has_agents_rules": bool(ws_ctx["agents_rules"]),
         "has_decisions_doc": bool(ws_ctx.get("decisions_summary")),
         "workspace_context": ws_ctx,
+        "phase_lifecycle": phase_lifecycle,
         "roles": role_plans,
     }
 
@@ -1627,6 +1860,10 @@ def compute_skill_attribution(results: list[dict[str, Any]], skill_plan: dict[st
         "tdd-workflow": ("pytest", "測試", "斷言", "red", "regression", "回歸"),
         "agency-testing-api-tester": ("api", "端點", "狀態碼", "fastapi", "契約", "驗證"),
         "decisions-governance": ("決策", "decisions.md", "adr"),
+        "xlsx": ("xlsx", "xlsm", "合併儲存格", "公式", "recalc", "合計"),
+        "spreadsheet-reconciliation": ("對帳", "勾稽", "差額", "隱藏列", "no-plug", "差異分析"),
+        "agency-data-consolidation-agent": ("s_ino", "ssot", "彙整", "除零", "單一真相"),
+        "eli5": ("白話", "外行", "副駕", "財會直覺"),
     }
     bh_items = skill_plan.get("bughunter_plan", [])
     by_role: dict[str, dict[str, Any]] = {}
@@ -2439,10 +2676,17 @@ def main():
     p_ck = sub.add_parser("check-keys", help="Check which model API keys are configured (without exposing secrets)")
     p_ck.add_argument("--force-gemini-api", action="store_true", help="Bypass Antigravity Plan (agy.exe) and use GEMINI_API_KEY directly")
 
-    p_plan = sub.add_parser("plan-skills", help="Preview dynamic Role-Scoped × Task-Aware skill bindings for a prompt")
+    p_plan = sub.add_parser("plan-skills", help="Preview Phase-Scoped dynamic model/skills/component lifecycle")
     p_plan.add_argument("--prompt", type=str, required=True, help="Task prompt to classify and route")
     p_plan.add_argument("--files", nargs="*", default=[], help="Changed file paths to weight skill routing")
     p_plan.add_argument("--git-diff", action="store_true", help="Include git diff HEAD files and hunks")
+    p_plan.add_argument(
+        "--phase",
+        type=str,
+        default="all",
+        choices=["all", "0", "A", "B", "C1", "C2", "D"],
+        help="Focus output on a specific Phase (default: all)",
+    )
 
     p_rev = sub.add_parser("review", help="Send prompt to all configured external heterogeneous models")
     p_rev.add_argument("--prompt", type=str, default="", help="Prompt text")
@@ -2533,6 +2777,9 @@ def main():
             changed_files=(getattr(args, "files", None) or None),
             diff_text=plan_diff,
         )
+        target_phase = getattr(args, "phase", "all")
+        lifecycle = plan.get("phase_lifecycle", [])
+        selected_phase_obj = next((p for p in lifecycle if p["phase"] == target_phase), None) if target_phase != "all" else None
         summary = {
             "industry_family": plan["industry_family"],
             "detected_task_domains": plan["detected_task_domains"],
@@ -2547,10 +2794,13 @@ def main():
             "max_skills_per_role": plan["max_skills_per_role"],
             "has_graphify_report": plan["has_graphify_report"],
             "has_agents_rules": plan["has_agents_rules"],
+            "phase_lifecycle": lifecycle,
             "role_skill_bindings": {
                 role: info["bound_skills"] for role, info in plan["roles"].items()
             },
         }
+        if selected_phase_obj is not None:
+            summary["selected_phase"] = selected_phase_obj
         print(json.dumps(summary, ensure_ascii=False, indent=2))
         return
 

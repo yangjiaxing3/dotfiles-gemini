@@ -1,35 +1,30 @@
 ---
 name: multi-agent-mode
-description: "Use when tasks need Neon XHigh/Carbon High planning & Hydrogen XHigh execution loop. 多Agent模式/紅隊辯證/multi-agent"
+description: "Use when tasks need phase-scoped Neon/Carbon planning, C1/C2 Hydrogen execution & Grok/Decision review. 多Agent動態啟停/紅隊辯證"
 ---
 
-# 多 Agent 模式（Neon XHigh 協調定計 ⇄ Hydrogen XHigh 平行執行測試 × 動態重規劃）
+# 多 Agent 模式（Phase-Scoped 動態啟停：Model × Skills × 元件）
 
-原則：**對齊 Antigravity Orchestrator 官方協作設計，拒絕憑第一個 Prompt 鎖死低配靜態路由**。預設由 **`gemini-4-neon-xhigh`**（Extra High mode）擔任 Planner（協調者）統籌探索定計與重規劃（僅純輕量文案／錯字／省額度情境可改選 **`gemini-4-carbon-high`** High mode），搭配速度極快、成本最低的 **`gemini-4-hydrogen-xhigh`**（Extra High mode）作為 Executor 平行讀取檔案、改碼與跑測試；遇阻立即交回 Phase A 修補計畫。切換角色時標示：`### 🤖 Agent [X]（[模型]）：[角色]`。全程繁體中文。
+原則：**拒絕靜態高佔用常駐底座（只啟動、不釋放），改按階段（Phase）動態啟動最適合的 Model、Skills 與確定性元件，交棒即釋放**。先由 Phase A 唯讀探索定計並訂 **Re-plan Triggers**，再切進 `C1 Build → C2 Verify` 兩段執行，遇阻交回 Phase A 修補。切換角色標示：`### 🤖 Agent [X]（[模型]）：[角色]`。全程繁體中文。
 
-## 動態執行流程（Plan ⇄ Execute ⇄ Re-plan Loop）
+## 六階段動態啟停流程（Plan ⇄ Execute ⇄ Re-plan Loop）
 
-| Phase | 角色 | 主力模型 (`--model`) | 核心職責與階段轉換 | 停止 / 交回條件 |
+| Phase | 角色 | 主力模型 | 動態啟動 Skills 與元件 *(交棒即釋放)* | 停止 / 交回條件 |
 | :--- | :--- | :--- | :--- | :--- |
-| **0** | 🛡️ 邊界守門 | **`deepseek-flash`** | 亞秒級檢查工作區邊界與授權白名單（**不做靜態難度猜測外包**） | 越界或未授權跨庫 → 停止請求授權 |
-| **A** | 🧠 唯讀定計與重規劃 | 預設主力：**`gemini-4-neon-xhigh`**（Extra High mode）<br/>輕量可選：**`gemini-4-carbon-high`**（High mode） | **唯讀協調階段**：預設以 `Neon XHigh` 統籌架構、查 `graphify`/依賴鏈並拆派任務（純輕量文案／單點微調可選 `Carbon High`），明訂 **Re-plan Triggers** 與禁區 | 計畫與觸發條件完成 → B（高風險）或 C（低風險） |
-| **B** | 😈 紅隊 ＋ 裁決 *(門禁觸發)* | **`grok-4.7` (Cursor Plan)** ＋ **Gemini Decision API** *(與 `jev-1.13.0` 雙軌；備案 **`qwen4-max`**)* | 僅當 `>=3` 檔、刪架構/`>15` 行、相機/金流/3D 公式/資安時啟動：Grok 攻 6 維度，Decision API 吐結構化 JSON 燈號 | 非 🔴 且高風險已獲使用者確認 → C；🔴 → 回 A 修補計畫 |
-| **C** | 🛠️ 主力執行與測試 | **`gemini-4-hydrogen-xhigh`**（Extra High mode；額度不足備案 **`qwen4-max`**） | 發揮高速低成本優勢，平行讀檔、依 Phase A 計畫改碼、更新套件、執行測試與實機驗證 | **觸發 Re-plan Trigger** → 立即停手交回 **A (`Neon XHigh`/`Carbon High`)** 修補計畫 |
-| **D** | 🔍 規格核對與終審放行 | **`qwen4-max`** *(備案 **`qwen4-max-preview`** / **`deepseek-flash`**)* ＋ **Gemini Decision API** | **Qwen / Flash**：逐條核對 100% 規格未縮水並確認最終測試輸出<br/>**Decision API**：高風險任務輸出終審 `PASS / BLOCK` | PASS → `walkthrough.md`；FAIL → 回 A 重估或 C 修正（最多 2 輪） |
+| **0** | 🛡️ 邊界與脫敏探勘 | `deepseek-flash` | **Skills**：`boundary-sentinel`, `accidental-data-loss-prevention`, 按需 `bughunter`/`hunt-*`<br/>**元件**：`xlsx_ingest_profiler.py --mask-pii`, `check_sensitive_paths.py` | 越界／未授權／敏感外送 → 停手請求授權 |
+| **A** | 🧠 唯讀定計與契約 | `gemini-4-neon-xhigh` *(輕量選 `carbon-high`)* | **Skills**：`graphify`, 領域架構/對帳/圖表設計（含 `spreadsheet-reconciliation`）<br/>**元件**：`graphify query/path`, `DECISIONS.md` 索引, `Re-plan Triggers` | 計畫與契約完成 → 進 B 或 C1 *(釋放探索工具)* |
+| **B** | 😈 紅隊 ＋ 裁判 *(門禁)* | `grok-4.7` ＋ `Decision API` (`jev`/Gemini; 備援 `qwen4-max`) | **Skills**：`ponytail-review`, `bughunter`, 領域稽核（如 `spreadsheet-reconciliation`, `xlsx`）<br/>**元件**：靜態缺陷掃描、Claude-BugHunter Vault、`Decision API` 燈號 | 非 🔴 → C1；🔴 → 回 A 修補 *(釋放紅隊上下文)* |
+| **C1** | 🛠️ 實作建構 *(Build)* | `gemini-4-hydrogen-xhigh` *(硬骨頭升 `qwen4-max`)* | **Skills**：**4 槽滿配領域實作技能**（如 `xlsx`、`fastapi-templates`、`spreadsheet-reconciliation`；僅觸及安全面時掛 1 槽 `security-audit`，**0 測試佔槽**）<br/>**元件**：`recalc.py`, `formula_engine_hub.py`, `hyperformula_eval.js` | 觸發 Re-plan Trigger → 回 A；寫碼完成 → C2 *(釋放 Build)* |
+| **C2** | 🧪 驗證測試 *(Verify)* | `gemini-4-hydrogen-xhigh` | **Skills**：`tdd-workflow`, `agent-tester`, `verification-quality`, `api-tester`/`agent-desktop`<br/>**元件**：`pytest`, `tsc`, `vitest`, `rule_lint.py --git-diff` | 同錯連敗 2 次 → 回 A；全綠 → D *(釋放測試)* |
+| **D** | 🔍 終審與白話交付 | `qwen4-max` *(備 `deepseek-flash`)* ＋ `Decision API` | **Skills**：`ponytail-review`, `eli5`, `verification-quality` ＋ 領域終審<br/>**元件**：`multi_model_gate.py review`, `graphify update .`, `SESSION-HANDOFF.md` | PASS → 輸出 `/eli5` 結案報告；FAIL → 回 A/C1 |
 
-## Re-plan Triggers（Hydrogen 必須停手交回 Phase A 的條件）
-
-1. **隱藏依賴浮現**：發現計畫外之跨模組依賴、API 契約不合或必須改動未授權檔案。
-2. **環境/套件假設失效**：更新套件、編譯環境或外部服務回應與唯讀探索時不符。
-3. **執行連敗 2 次**：同一錯誤或測試連續失敗 **2 次**（嚴禁在執行層繼續瞎猜，交回 Phase A（`Neon XHigh` / `Carbon High`）檢視現狀修補計畫；若為重度演算法/跨檔硬骨頭，重規劃後可指派 `qwen4-max` 接手）。
-4. **逼近受保護禁區**：實作時發現可能傷及 3D 幾何、計價毛利、雜湊鏈或只作廢不刪除規則。
+## Re-plan Triggers（執行層必須停手交回 Phase A 的條件）
+1. **隱藏依賴浮現**：發現計畫外跨模組契約衝突或須改動未授權檔案。
+2. **環境／套件假設失效**：編譯、依賴或外部 API 與探索假設不符。
+3. **同錯連敗 2 次**：同一錯誤連續失敗 **2 次**（交回 Phase A 重設計；必要時升派 `qwen4-max`）。
+4. **逼近受保護禁區**：可能改寫 3D 幾何、財務計價公式、只作廢不刪除或 PII 防護。
 
 ## ⚠️ Gotchas (避坑指南)
-
-- **禁止靜態單一廉價外包**：不可只看第一句 Prompt 就把整條長程任務直接鎖死在最便宜模型；低風險也須經唯讀釐清再動手。
-- **Hydrogen 遇阻不硬幹**：觸發任何 Re-plan Trigger 必須交回 Phase A（`gemini-4-neon-xhigh` / `gemini-4-carbon-high`）檢視現狀並修補計畫，不可原地重試超過 2 次。
-- **禁止單票 JEV 覆蓋與假綠燈**：門禁腳本採「一模型一票」統計散文燈號，多數 `🔴` 或紅隊失敗／200s 逾時（Option B）強制輸出 `BLOCK`；未傳 `--include-grok-api` 時 `Agent B` 標記為 `delegated_to_ide`，不計入實跑通過率。
-- **模型路由鐵律 (`multi_model_gate.py`)**：
-  1. `grok` 預設委派 IDE 子代理 (`delegated_to_ide`)；當加上 `--include-grok-api` 或 `grok-x` 時，**第一順位（免 API 費）**呼叫 `grok.exe --permission-mode plan`（強制鎖定 `tempdir`、25KB 摘要、`--max-turns 2`、200s 逾時即觸發 Option B 阻斷）。
-  2. Gemini（Phase A `Neon XHigh` / `Carbon High`、Phase C `Hydrogen XHigh`、`Decision`）預設**第一順位（免 API 費）**清空子程序 `GEMINI_API_KEY` / `GOOGLE_API_KEY`，呼叫 `agy.exe --mode plan`（注入唯讀禁工具守門）走 Antigravity Plan 訂閱額度；失敗時退回 `GEMINI_API_KEY` 直打公式 API。
-  3. `qwen4-max` 採金鑰網域 1:1 鎖定：`sk-sp-...` MaaS 專鑰僅走 `token-plan.maas`（預設 `thinking_budget=2048` / `max_tokens=12288`，遇空轉關 thinking 重試），嚴禁跨網域送至 DashScope；直連全敗後才走 OpenRouter。
+- **不可再把 `C1` 與 `C2` 混在同一回合佔滿基地台**：`C1` 專注結構與邏輯實作（免背 `tdd-workflow`），完成後切換 `C2` 載入測試矩陣驗證，確保每階段都用滿最適合的工具組。
+- **禁止靜態猜難度與單票假綠燈**：門禁腳本採「一模型一票」統計，多數 `🔴` 或紅隊逾時即 `BLOCK`；可用 `python scripts/multi_model_gate.py plan-skills --phase <0|A|B|C1|C2|D> --prompt "..."` 檢視各階段啟動／釋放清單。
+- **模型路由鐵律 (`multi_model_gate.py`)**：Grok 走 Cursor Plan 或 `grok.exe` Plan；Gemini 優先 `agy.exe --mode plan`；Qwen MaaS `sk-sp-...` 鎖定 `token-plan.maas`，直連失敗後才走 OpenRouter。

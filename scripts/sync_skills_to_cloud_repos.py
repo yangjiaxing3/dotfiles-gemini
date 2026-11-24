@@ -892,7 +892,10 @@ def sync_repo(repo: Path, global_skills: list[Path], rules_only: bool = False, d
                 if (not dst_cmd.is_file()) or (dst_cmd.read_bytes() != src_cmd.read_bytes()):
                     planned_actions.append(f"{'update' if dst_cmd.is_file() else 'create'}:.cursor/commands/{fm_name}.md")
                     if not dry_run:
-                        shutil.copy2(src_cmd, dst_cmd)
+                        try:
+                            shutil.copy2(src_cmd, dst_cmd)
+                        except OSError:
+                            dst_cmd.write_bytes(src_cmd.read_bytes())
                 commands_synced += 1
 
     return {

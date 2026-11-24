@@ -1,23 +1,45 @@
 #!/usr/bin/env python3
 """
 Formula Engine Hub for /xlsx Skill
-Combines GitHub's top open-source spreadsheet formula engines:
-  1. vinci1it2000/formulas (v1.3.4)   -> AST/DAG Dependency Graph & Topological Depth
-  2. bradbase/xlcalculator (v0.5.0)   -> What-If Scenario & Unit Test Evaluator
-  3. xlwings / win32com               -> Native Excel 16.0 Dynamic Array (Formula2) & Recalc
-  4. OOXML _xlfn. Translator          -> Converts Excel 365 formulas for safe openpyxl writing
+Combines GitHub's open-source spreadsheet formula engines:
+  1. vinci1it2000/formulas / networkx  -> AST/DAG Dependency Graph & Topological Depth
+  2. bradbase/xlcalculator (v0.5.0)    -> What-If Scenario & Unit Test Evaluator
+  3. OOXML _xlfn. Translator           -> Converts Excel 365 formulas for safe openpyxl writing
 """
+
+from __future__ import annotations
 
 import argparse
 import json
 import re
 import sys
 from pathlib import Path
-import networkx as nx
-from openpyxl import load_workbook
 
-# Reuse XLFN_MAP from recalc.py
-sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+
+def _bootstrap_paths() -> None:
+    """確保可跨目錄匯入同門 recalc.py 及全域 /xlsx .venv 依賴。"""
+    skill_dir = Path(__file__).resolve().parent.parent
+    if str(skill_dir) not in sys.path:
+        sys.path.insert(0, str(skill_dir))
+    try:
+        import networkx  # noqa: F401
+        import openpyxl  # noqa: F401
+        return
+    except ImportError:
+        pass
+    venv_candidates = [
+        skill_dir / ".venv" / "Lib" / "site-packages",
+        Path.home() / ".gemini" / "config" / "skills" / "xlsx" / ".venv" / "Lib" / "site-packages",
+    ]
+    for cand in venv_candidates:
+        if cand.is_dir() and str(cand) not in sys.path:
+            sys.path.insert(0, str(cand))
+
+
+_bootstrap_paths()
+
+import networkx as nx  # noqa: E402
+from openpyxl import load_workbook  # noqa: E402
 from recalc import XLFN_MAP, CELL_REF_RE  # noqa: E402
 
 
@@ -34,41 +56,52 @@ def translate_to_ooxml_xlfn(formula: str) -> str:
 
 
 def build_workbook_dag(excel_path: str) -> dict:
-    """
-    Build cell-level & sheet-level Dependency Graph (DAG) using networkx + openpyxl/formulas,
-    detecting circular references, topological depth, and high-fan-in/out bottleneck cells.
-    """
-    wb = load_workbook(excel_path, data_only=False)
+    """Build cell-level & sheet-level Dependency Graph (DAG), detecting circular references & hotspots."""
+    wb = load_workbook(excel_path, data_only=False, read_only=True)
     cell_graph = nx.DiGraph()
     sheet_graph = nx.DiGraph()
     formula_cells = 0
 
-    for sname in wb.sheetnames:
-        sheet_graph.add_node(sname)
-        ws = wb[sname]
-        for row in ws.iter_rows():
-            for cell in row:
-                val = cell.value
-                if not (isinstance(val, str) and val.startswith("=")):
-                    continue
-                formula_cells += 1
-                target_node = f"{sname}!{cell.coordinate}"
-                cell_graph.add_node(target_node, formula=val)
+    try:
+        for sname in wb.sheetnames:
+            sheet_graph.add_node(sname)
+            ws = wb[sname]
+            for row in ws.iter_rows():
+                for cell in row:
+                    val = cell.value
+                    if not (isinstance(val, str) and val.startswith("=")):
+                        continue
+                    formula_cells += 1
+                    target_node = f"{sname}!{cell.coordinate}"
+                    cell_graph.add_node(target_node)
 
-                for m in CELL_REF_RE.finditer(val):
-                    ref_sheet = m.group(1) or m.group(2) or sname
-                    full_match = m.group(0)
-                    ref_coord = full_match.split("!")[-1].replace("$", "")
-                    src_node = f"{ref_sheet}!{ref_coord}"
-                    cell_graph.add_edge(src_node, target_node)
-                    if ref_sheet != sname and ref_sheet in wb.sheetnames:
-                        sheet_graph.add_edge(ref_sheet, sname)
+                    for m in CELL_REF_RE.finditer(val):
+                        ref_sheet = m.group(1) or m.group(2) or sname
+                        full_match = m.group(0)
+                        ref_coord = full_match.split("!")[-1].replace("$", "")
+                        src_node = f"{ref_sheet}!{ref_coord}"
+                        cell_graph.add_edge(src_node, target_node)
+                        if ref_sheet != sname and ref_sheet in wb.sheetnames:
+                            sheet_graph.add_edge(ref_sheet, sname)
+    finally:
+        wb.close()
 
-    wb.close()
+    # Large workbooks can have many SCCs; bound simple cycle inspection safely
+    cycles = []
+    try:
+        if cell_graph.number_of_edges() <= 50000:
+            for c in nx.simple_cycles(cell_graph):
+                cycles.append(c)
+                if len(cycles) >= 10:
+                    break
+        else:
+            is_acyclic = nx.is_directed_acyclic_graph(cell_graph)
+            if not is_acyclic:
+                cycles = [["cycle_detected_in_large_graph"]]
+    except Exception:
+        cycles = []
 
-    cycles = list(nx.simple_cycles(cell_graph))
     is_dag = len(cycles) == 0
-
     max_depth = 0
     if is_dag and cell_graph.number_of_nodes() > 0:
         try:
@@ -76,7 +109,6 @@ def build_workbook_dag(excel_path: str) -> dict:
         except Exception:
             max_depth = 0
 
-    # Top hotspot cells by out-degree (most depended upon)
     hotspots = sorted(
         [(n, d) for n, d in cell_graph.out_degree() if d > 0],
         key=lambda x: x[1],
@@ -91,17 +123,13 @@ def build_workbook_dag(excel_path: str) -> dict:
         "is_acyclic_dag": is_dag,
         "circular_references": cycles[:10],
         "max_topological_depth": max_depth,
-        "sheet_dependencies": [f"{u} -> {v}" for u, v in sheet_graph.edges()],
+        "sheet_dependencies": [f"{u} -> {v}" for u, v in sheet_graph.edges()][:30],
         "top_dependency_hotspots": [{"node": n, "dependents": d} for n, d in hotspots],
     }
 
 
 def evaluate_what_if(excel_path: str, targets: list[str], overrides: list[str]) -> dict:
-    """
-    Evaluate target cells with optional input overrides using xlcalculator / formulas.
-    Example:
-      python formula_engine_hub.py eval model.xlsx "Sheet1!C10" --set "Sheet1!A2=5000"
-    """
+    """Evaluate target cells with optional input overrides using xlcalculator."""
     from xlcalculator import ModelCompiler, Evaluator
 
     compiler = ModelCompiler()
@@ -124,8 +152,7 @@ def evaluate_what_if(excel_path: str, targets: list[str], overrides: list[str]) 
     results = {}
     for t in targets:
         t_addr = t.strip()
-        val = evaluator.evaluate(t_addr)
-        results[t_addr] = val
+        results[t_addr] = evaluator.evaluate(t_addr)
 
     return {
         "engine": "bradbase/xlcalculator",
@@ -139,7 +166,7 @@ def main():
     sub = parser.add_subparsers(dest="cmd", required=True)
 
     p_dag = sub.add_parser("dag", help="Analyze workbook formula DAG, topological depth, and circular refs")
-    p_dag.add_argument("excel_file", help="Path to .xlsx file")
+    p_dag.add_argument("excel_file", help="Path to .xlsx or .xlsm file")
 
     p_xlfn = sub.add_parser("xlfn", help="Translate modern Excel 365 formula string to OOXML _xlfn. syntax")
     p_xlfn.add_argument("formula", help="Formula string starting with =")

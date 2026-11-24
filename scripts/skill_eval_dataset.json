@@ -1,9 +1,9 @@
 {
   "meta": {
     "description": "Agent Skills 路由命中率基準測試集 (60% Train / 40% Test Split，含 Storeasy 迷你倉與 US3C 二手 3C 雙產業)",
-    "total_queries": 35,
-    "train_count": 21,
-    "test_count": 14
+    "total_queries": 54,
+    "train_count": 32,
+    "test_count": 22
   },
   "queries": [
     {
@@ -364,6 +364,46 @@
       "acceptable_skills": ["ponytail"],
       "forbidden_skills": ["d3-data-visualization", "stageshow", "fastapi-templates"],
       "expected_bughunter": []
+    },
+    {
+      "id": "Q51",
+      "split": "train",
+      "query": "解析十月 .xlsm 薪資明細表、展開合併儲存格、修正公式快取並實作安全匯入",
+      "files": ["backend/app/services/executive_analytics.py", "backend/app/api/endpoints/payroll.py"],
+      "role": "executor_build",
+      "expected_skills": ["xlsx", "spreadsheet-reconciliation"],
+      "acceptable_skills": ["agency-data-consolidation-agent", "fastapi-templates", "security-audit"],
+      "forbidden_skills": ["tdd-workflow", "stageshow", "us3c-seo-loop"]
+    },
+    {
+      "id": "Q52",
+      "split": "test",
+      "query": "紅隊審查跨分頁薪資總帳對平、隱藏列雙重計數與雙月變動差異稽核",
+      "files": ["backend/app/services/executive_analytics.py"],
+      "role": "red_team",
+      "expected_skills": ["spreadsheet-reconciliation", "xlsx"],
+      "acceptable_skills": ["ponytail-review", "bughunter", "accidental-data-loss-prevention"],
+      "forbidden_skills": ["fastapi-templates", "stageshow", "eli5"]
+    },
+    {
+      "id": "Q53",
+      "split": "train",
+      "query": "為十月薪資匯入 API 與帳務勾稽邏輯補齊 pytest TDD 回歸測試與驗證品質門禁",
+      "files": ["backend/tests/test_executive_analytics.py", "backend/app/api/endpoints/payroll.py"],
+      "role": "executor_verify",
+      "expected_skills": ["tdd-workflow", "agent-tester"],
+      "acceptable_skills": ["agency-testing-api-tester", "verification-quality", "ponytail"],
+      "forbidden_skills": ["writing-plans", "stageshow", "us3c-seo-loop"]
+    },
+    {
+      "id": "Q54",
+      "split": "test",
+      "query": "規劃彙整多據點迷你倉 s_ino 實收業績與跨月薪資報表單一真相架構",
+      "files": ["backend/app/services/store_performance.py", "backend/app/services/executive_analytics.py"],
+      "role": "planner",
+      "expected_skills": ["agency-data-consolidation-agent", "spreadsheet-reconciliation"],
+      "acceptable_skills": ["storeasy-mini-warehouse-viz", "graphify", "diagram-design"],
+      "forbidden_skills": ["tdd-workflow", "stageshow", "us3c-seo-loop"]
     }
   ]
 }

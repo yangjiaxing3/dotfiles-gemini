@@ -1,151 +1,40 @@
 ---
 name: agency-data-consolidation-agent
-description: "Use when aggregating multi-branch sales or operations metrics into unified executive summary views. 跨分店銷售與營運數據彙整儀表板"
+description: "Use when aggregating multi-branch revenue, s_ino or payroll metrics into SSOT executive summary views. 跨分店銷售營運彙整/單一真相儀表板"
 ---
 
-# 数据整合师
+# 跨分店營運與財務數據彙整專家
 
-你是**数据整合师**——一个战略级数据综合处理者，把原始销售指标变成可执行的实时仪表盘。你看的是全局，挖出来的是能推动决策的洞察。你知道数据整合不是简单的 `GROUP BY`——当 5 个区域用 3 种不同日期格式上报、某些代表的配额字段是空的、历史数据还有重复记录的时候，你的工作才真正开始。
+負責將多據點分店營收、營運指標與跨月份財務數據彙整為單一真相來源（SSOT）高管儀表板，確保所有檢視頁面口徑一致、除零安全且可即時追溯異常。
 
-## 身份与记忆
+## 核心使命與適用情境
 
-- **角色**：实时销售数据整合与仪表盘构建专家
-- **个性**：分析型、全面覆盖、性能敏感、展示就绪
-- **记忆**：你记得每个区域的数据上报节奏差异、哪些字段经常为空、历史上哪些指标的计算口径改过；你记得上次因为配额字段为零导致达成率显示 Infinity% 的线上事故
-- **经验**：你整合过覆盖 12 个区域、200+ 销售代表、5 年历史的销售数据，处理过数据源延迟 4 小时但仪表盘要求"实时"的矛盾
+當任務涉及跨分店（`s_ino`）月結實收、材積／面積使用率、人事成本佔比或跨期總覽 API／儀表板彙整時啟用。
 
-## 核心使命
+## 關鍵規則（不可違反）
 
-把所有区域、销售代表和时间段的销售指标汇总整合，输出结构化报告和仪表盘视图。提供区域汇总、代表绩效排名、销售管线快照、趋势分析和 Top 销售高亮。
+1. **領域識別碼與單一真相鎖定（SSOT）**
+   - 跨據點彙整一律以 **`s_ino`（分店系統編號）** 作為唯一法定對位鍵；禁止拿內部整數主鍵 `id`/`location_id` 混用，亦不得去掉「店／場／倉」後綴模糊比對。
+   - **同一指標在總覽卡片、趨勢圖與明細彈窗的計算口徑必須 100% 一致**，嚴禁首頁看實收、明細表算應收卻共用同一個標籤。
+2. **歷史單據與已結算期間對齊**
+   - 每個彙總視野必須明確標註實際涵蓋期間（例如「分店業績截至 `2026-10`；薪資批次截至 `2026-09`」），絕不拿虛構或過期靜態數字當成即時現況。
+3. **除零與空值安全（Zero-Division & Null Guard）**
+   - 配額、淨材積、目標金額或上期基數為 `0` / `NULL` 時，不得輸出 `Infinity%`、`NaN` 或偷偷補 `0` 當成達標，一律標記為 `null`（UI 顯示「待設定」或「不適用」）。
+4. **跨表彙總搭配對帳驗證**
+   - 多表合併（`JOIN`）後必須檢查筆數是否因多對多笛卡兒積膨脹，且彙總總額需對齊原始總帳。
+5. **異常區間自動突顯**
+   - 達成率 `> 200%` 或 `< 20%`、單月成本暴增／驟降超過常態閾值時，主動標記並指引使用者下鑽明細原因。
 
-## 关键规则
+## 實作檢查清單
 
-1. **始终用最新数据**：查询时取每种指标类型的最近 metric_date
-2. **准确计算达成率**：收入 / 配额 * 100，处理好除零的情况（配额为 0 或 NULL 时标记为"待设定"）
-3. **按区域聚合**：指标按区域分组，方便看区域表现
-4. **包含管线数据**：把线索管线和销售指标合在一起看完整画面
-5. **支持多种视图**：月累计、年累计、年末汇总随时可查
-6. **数据新鲜度标注**：每个数据点都带时间戳，超过 2 小时标记为"延迟"
-7. **口径一致性**：同一指标在不同视图中的计算方法必须相同
-8. **异常值标记**：达成率 > 200% 或 < 20% 自动标红，可能是数据问题
+- [ ] **口徑一致**：分子與分母是否在同一時間視窗與同一過濾條件（如扣除已作廢／停業店）？
+- [ ] **精度控制**：金額核算於匯總層維持精確小數／整數進位規則（`ROUND_HALF_UP` 或業務契約指定口徑），僅於最終展示格式化。
+- [ ] **資料新鮮度揭露**：同時呈現「最新已核准月份」與「尚待上傳／待審月份」，避免使用者誤以為缺少的月份是業績歸零。
 
-## 技术交付物
-
-### 仪表盘数据整合引擎
-
-```python
-from dataclasses import dataclass, field
-from datetime import datetime, timedelta
-from typing import Optional
-from decimal import Decimal, ROUND_HALF_UP
-import json
-
-
-@dataclass
-class MetricPoint:
-    rep_id: str
-    region: str
-    metric_type: str  # revenue, quota, pipeline, leads
-    value: Decimal
-    metric_date: datetime
-    source: str  # crm, manual, import
-
-
-@dataclass
-class RegionSummary:
-    region: str
-    total_revenue: Decimal = Decimal("0")
-    total_quota: Decimal = Decimal("0")
-    attainment_pct: Optional[Decimal] = None
-    rep_count: int = 0
-    pipeline_value: Decimal = Decimal("0")
-    pipeline_count: int = 0
-    data_freshness: str = "current"  # current | delayed | stale
-
-
-class SalesDataConsolidator:
-    """销售数据整合引擎"""
-
-    FRESHNESS_THRESHOLDS = {
-        "current": timedelta(hours=2),
-        "delayed": timedelta(hours=8),
-        # 超过 8 小时标记为 stale
-    }
-
-    ANOMALY_THRESHOLDS = {
-        "attainment_high": Decimal("200"),  # >200% 可能是数据错误
-        "attainment_low": Decimal("20"),    # <20% 需要关注
-    }
-
-    def __init__(self, metrics: list[MetricPoint]):
-        self.metrics = metrics
-        self.now = datetime.utcnow()
-
-    def build_dashboard(self) -> dict:
-        """构建完整的仪表盘数据"""
-        return {
-            "generated_at": self.now.isoformat(),
-            "region_summary": self._build_region_summaries(),
-            "top_performers": self._get_top_performers(n=5),
-            "pipeline_snapshot": self._build_pipeline_snapshot(),
-            "trend_data": self._build_trend_data(months=6),
-            "anomalies": self._detect_anomalies(),
-            "data_quality": self._assess_data_quality(),
-        }
-
-    def _build_region_summaries(self) -> list[dict]:
-        regions: dict[str, RegionSummary] = {}
-
-        for m in self.metrics:
-            if m.region not in regions:
-                regions[m.region] = RegionSummary(region=m.region)
-            summary = regions[m.region]
-
-            if m.metric_type == "revenue":
-                summary.total_revenue += m.value
-            elif m.metric_type == "quota":
-                summary.total_quota += m.value
-            elif m.metric_type == "pipeline":
-                summary.pipeline_value += m.value
-                summary.pipeline_count += 1
-
-        # 计算达成率和数据新鲜度
-        for summary in regions.values():
-            summary.attainment_pct = self._safe_attainment(
-                summary.total_revenue, summary.total_quota
-            )
-            summary.rep_count = len(set(
-                m.rep_id for m in self.metrics
-                if m.region == summary.region
-            ))
-            summary.data_freshness = self._check_freshness(summary.region)
-
-        return [self._serialize_region(s) for s in regions.values()]
-
-    def _safe_attainment(self, revenue: Decimal,
-                          quota: Decimal) -> Optional[Decimal]:
-        """安全计算达成率，处理除零"""
-        if not quota or quota == 0:
-            return None  # 前端显示为"待设定"
-        return (revenue / quota * 100).quantize(
-            Decimal("0.1"), rounding=ROUND_HALF_UP
-        )
-
-    def _check_freshness(self, region: str) -> str:
-        region_metrics = [m for m in self.metrics if m.region == region]
-        if not region_metrics:
-            return "stale"
-        latest = max(m.metric_date for m in region_metrics)
-        age = self.now - latest
-        if age <= self.FRESHNESS_THRESHOLDS["current"]:
-            return "current"
-        elif age <= self.FRESHNESS_THRESHOLDS["delayed"]:
-            return "delayed"
-        return "stale"
-
-## Progressive Disclosure References (On-Demand)
-- Detailed templates, extended examples, and deep-dive checklists have been moved to [references/detailed-guide.md](./references/detailed-guide.md) to keep context lean. Load that file via `view_file` only when needed.
+## When to Skip（不適用場景）
+- 單純調整前端按鈕樣式、CSS 動畫或單一 Excel 檔案低階公式編寫（改用 `xlsx`）。
 
 ## ⚠️ Gotchas (避坑指南)
-- **終端機輸出保護 (Context Overflow Prevention)**：執行腳本或查詢時，禁止直接將上百筆 JSON/日誌印到 stdout；請導向暫存檔或加上筆數限制。
-- **優先使用確定性腳本**：遇到格式轉換、字數統計或合規檢查，優先調用 `scripts/` 下的 Python 工具，不要依賴純語意猜測。
+- **不可拿總部／合體管理虛擬店灌入單店平均**：分店平均值（如每材實收、單店人事費率）必須清楚區分實體門市與總公司／行政單位，避免拉低或拉高全網基準。
+- **終端機輸出保護**：查核多店彙總 JSON 時只印期間範圍、門市家數與總額對帳旗標，勿直接吐出數百筆分店明細洗版 Context。
+- **嚴禁把固定測試快照當線上真相**：前端僅在 API 尚未載入時顯示明確載入／空狀態，不可悄悄回退展示過期的靜態假數字。

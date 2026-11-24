@@ -204,16 +204,22 @@ ROLE_SKILL_ALLOWLIST: dict[str, set[str]] = {
     "stage-gate-review": {"red_team", "agent_0", "planner"},
     "agency-engineering-code-reviewer": {"red_team"},
     "agent-code-analyzer": {"red_team"},
-    "agent-performance-optimizer": {"red_team", "executor"},
+    "agent-performance-optimizer": {"red_team", "executor", "executor_build"},
     "bughunter": {"red_team", "agent_0"},
-    "security-audit": {"red_team", "agent_0", "executor", "decision", "planner", "refactor"},
-    "ponytail": {"executor", "refactor", "planner", "agent_0", "red_team", "decision"},
-    "tdd-workflow": {"executor", "refactor"},
-    "fastapi-templates": {"executor", "refactor"},
-    "agent-tester": {"executor", "agent_0"},
-    "agent-dev-backend-api": {"executor", "refactor"},
-    "subagent-driven-development": {"executor", "refactor"},
-    "accidental-data-loss-prevention": {"agent_0", "red_team", "executor"},
+    "security-audit": {"red_team", "agent_0", "executor", "executor_build", "decision", "planner", "refactor"},
+    "ponytail": {"executor", "executor_build", "executor_verify", "refactor", "planner", "agent_0", "red_team", "decision"},
+    "tdd-workflow": {"executor", "executor_verify", "refactor"},
+    "fastapi-templates": {"executor", "executor_build", "refactor"},
+    "agent-tester": {"executor", "executor_verify", "agent_0"},
+    "agent-dev-backend-api": {"executor", "executor_build", "refactor"},
+    "subagent-driven-development": {"executor", "executor_build", "refactor"},
+    "agency-testing-api-tester": {"executor", "executor_verify", "red_team", "agent_0"},
+    "verification-quality": {"executor", "executor_verify", "decision", "refactor"},
+    "xlsx": {"agent_0", "planner", "red_team", "executor", "executor_build", "refactor"},
+    "spreadsheet-reconciliation": {"agent_0", "planner", "red_team", "executor", "executor_build", "refactor", "decision"},
+    "agency-data-consolidation-agent": {"planner", "executor", "executor_build", "refactor"},
+    "eli5": {"refactor", "planner"},
+    "accidental-data-loss-prevention": {"agent_0", "red_team", "executor", "executor_build"},
     "boundary-sentinel": {"agent_0"},
     "phase-0-boundary-sentinel": {"agent_0"},
     "ponytail-debt": {"agent_0", "refactor"},
@@ -223,6 +229,12 @@ ROLE_ALIAS_MAP: dict[str, str] = {
     "planner": "planner",
     "agent planner": "planner",
     "agent planner & re-planner": "planner",
+    "executor_build": "executor_build",
+    "c1": "executor_build",
+    "phase c1": "executor_build",
+    "executor_verify": "executor_verify",
+    "c2": "executor_verify",
+    "phase c2": "executor_verify",
     "executor": "executor",
     "agent executor": "executor",
     "agent executor & qa": "executor",
@@ -551,7 +563,20 @@ INTENT_SYNONYMS: dict[str, list[str]] = {
     "白名單": ["security-audit", "bughunter"],
     "附件上傳": ["bughunter", "security-audit", "upload"],
     "mime": ["bughunter", "security-audit"],
-    "xlsm": ["xlsx", "agency-sales-data-extraction-agent"],
+    "xlsm": ["xlsx", "spreadsheet-reconciliation", "agency-sales-data-extraction-agent"],
+    "薪資明細": ["xlsx", "spreadsheet-reconciliation", "agency-data-consolidation-agent"],
+    "對帳": ["spreadsheet-reconciliation", "xlsx", "agency-data-consolidation-agent"],
+    "勾稽": ["spreadsheet-reconciliation", "xlsx"],
+    "合併儲存格": ["xlsx", "spreadsheet-reconciliation"],
+    "隱藏列": ["spreadsheet-reconciliation", "xlsx"],
+    "差異分析": ["spreadsheet-reconciliation", "agency-data-consolidation-agent"],
+    "flux": ["spreadsheet-reconciliation", "variance"],
+    "reconciliation": ["spreadsheet-reconciliation", "cross-footing"],
+    "跨表對帳": ["spreadsheet-reconciliation", "xlsx"],
+    "傳票": ["spreadsheet-reconciliation", "xlsx"],
+    "實收業績": ["agency-data-consolidation-agent", "storeasy-mini-warehouse-viz", "spreadsheet-reconciliation"],
+    "白話": ["eli5", "humanizer-zh-tw"],
+    "ai 副駕": ["eli5", "agency-data-consolidation-agent"],
 }
 
 
@@ -687,7 +712,8 @@ def infer_file_signals(changed_files: list[str] | None) -> dict[str, Any]:
         for f in low_paths
     )
     has_data = any(
-        Path(f).suffix.lower() in DATA_EXTS or any(k in f for k in ("sqlite", ".db", "excel", "xlsm", "xlsx"))
+        Path(f).suffix.lower() in DATA_EXTS
+        or any(k in f for k in ("sqlite", ".db", "excel", "xlsm", "xlsx", "payroll", "executive_analytics", "store_performance", "reconcil"))
         for f in low_paths
     )
     has_security_surface = any(
@@ -759,9 +785,10 @@ def infer_file_signals(changed_files: list[str] | None) -> dict[str, Any]:
 
     if has_data:
         domain_hints.append("data_analysis")
-        signal_tokens.extend(["excel", "xlsx", "數據", "報表"])
+        signal_tokens.extend(["excel", "xlsx", "數據", "報表", "對帳", "勾稽"])
         _add_boost("xlsx", 9.0)
-        _add_boost("agency-sales-data-extraction-agent", 8.0)
+        _add_boost("spreadsheet-reconciliation", 10.0)
+        _add_boost("agency-data-consolidation-agent", 7.0)
 
     if is_docs_only:
         signal_tokens.extend(["文件", "架構", "決策"])
@@ -1066,6 +1093,14 @@ class SkillRouter:
                     q_and_files = q_lower + "\n" + "\n".join(merged_files).lower()
                     if not re.search(r"\b(?:webp|image|kiosk)\b|縮圖|壓縮|圖片|門市圖", q_and_files):
                         excluded_noise.append({"skill": s["name"], "reason": "context_excludes_kiosk_image"})
+                        continue
+                if s_name_l == "spreadsheet-reconciliation":
+                    q_and_files = q_lower + "\n" + "\n".join(merged_files).lower()
+                    if not re.search(
+                        r"\b(?:xlsx?|xlsm|csv|reconcil|flux|payroll)\b|對帳|勾稽|薪資|傳票|獎金|財務|試算表|隱藏列|小計|總帳",
+                        q_and_files,
+                    ):
+                        excluded_noise.append({"skill": s["name"], "reason": "context_excludes_reconciliation"})
                         continue
                 if file_signals["is_docs_only"] and not explicit_ui_or_seo:
                     if s_name_l in (FRONTEND_UI_SKILLS - {"diagram-design", "d3-data-visualization"}) or s_name_l in {"fastapi-templates", "tdd-workflow"}:

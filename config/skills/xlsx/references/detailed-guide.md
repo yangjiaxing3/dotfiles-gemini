@@ -1,163 +1,69 @@
-# xlsx — Detailed Reference & Extended Examples
+# `/xlsx` v2.5 — 進階參考與多引擎實作細節
 
-## Common Workflow
-1. **Choose tool**: pandas for data, openpyxl for formulas/formatting
-2. **Create/Load**: Create new workbook or load existing file
-3. **Modify**: Add/edit data, formulas, and formatting
-4. **Save**: Write to file
-5. **Recalculate formulas (MANDATORY IF USING FORMULAS)**: Use the recalc.py script
-   ```bash
-   python recalc.py output.xlsx
-   ```
-6. **Verify and fix any errors**: 
-   - The script returns JSON with error details
-   - If `status` is `errors_found`, check `error_summary` for specific error types and locations
-   - Fix the identified errors and recalculate again
-   - Common errors to fix:
-     - `#REF!`: Invalid cell references
-     - `#DIV/0!`: Division by zero
-     - `#VALUE!`: Wrong data type in formula
-     - `#NAME?`: Unrecognized formula name
+## 一、多引擎公式重算降級鏈 (`recalc.py`)
 
-### Creating new Excel files
+`recalc.py` 針對 `.xlsx` / `.xlsm` 採取以下自動降級鏈（支援 `--audit-only` 唯讀審計模式）：
+1. **Windows Excel COM (`pywin32`)**：呼叫本機 Excel 16.0 `CalculateFullRebuild()`，與桌面 Excel 計算結果 100% 一致。
+2. **`PSU3D0/formualizer`（Rust + Apache Arrow，選配）**：無頭跨平台重算引擎，原生支援 `XLOOKUP`、`LET`、`LAMBDA`、`FILTER` 等現代 Excel 365 語法。
+3. **`vinci1it2000/formulas`（純 Python AST/DAG）**：無需 Office 或 Rust 依賴的備援公式解析器。
+4. **`LibreOffice Headless` (`soffice`)**：Linux / macOS 無頭環境備援。
 
-```python
-# Using openpyxl for formulas and formatting
-from openpyxl import Workbook
-from openpyxl.styles import Font, PatternFill, Alignment
+> **注意**：`recalc.py` 在寫入或重算階段會自動依據 `.xlsm` 副檔名設定 `keep_vba=True`；掃描則一律使用 `read_only=True` 雙軌比對公式與快取值，確保零公式錯誤且偵測 `uncached_formula_count`（未快取公式）。
 
-wb = Workbook()
-sheet = wb.active
+## 二、`xlsx_ingest_profiler.py` 輸出欄位與審計指標
 
-# Add data
-sheet['A1'] = 'Hello'
-sheet['B1'] = 'World'
-sheet.append(['Row', 'of', 'data'])
-
-# Add formula
-sheet['B2'] = '=SUM(A1:A10)'
-
-# Formatting
-sheet['A1'].font = Font(bold=True, color='FF0000')
-sheet['A1'].fill = PatternFill('solid', start_color='FFFF00')
-sheet['A1'].alignment = Alignment(horizontal='center')
-
-# Column width
-sheet.column_dimensions['A'].width = 20
-
-wb.save('output.xlsx')
-```
-
-### Editing existing Excel files
-
-```python
-# Using openpyxl to preserve formulas and formatting
-from openpyxl import load_workbook
-
-# Load existing file
-wb = load_workbook('existing.xlsx')
-sheet = wb.active  # or wb['SheetName'] for specific sheet
-
-# Working with multiple sheets
-for sheet_name in wb.sheetnames:
-    sheet = wb[sheet_name]
-    print(f"Sheet: {sheet_name}")
-
-# Modify cells
-sheet['A1'] = 'New Value'
-sheet.insert_rows(2)  # Insert row at position 2
-sheet.delete_cols(3)  # Delete column 3
-
-# Add new sheet
-new_sheet = wb.create_sheet('NewSheet')
-new_sheet['A1'] = 'Data'
-
-wb.save('modified.xlsx')
-```
-
-## Recalculating formulas
-
-Excel files created or modified by openpyxl contain formulas as strings but not calculated values. Use the provided `recalc.py` script to recalculate formulas:
-
-```bash
-python recalc.py <excel_file> [timeout_seconds]
-```
-
-Example:
-```bash
-python recalc.py output.xlsx 30
-```
-
-The script:
-- Automatically sets up LibreOffice macro on first run
-- Recalculates all formulas in all sheets
-- Scans ALL cells for Excel errors (#REF!, #DIV/0!, etc.)
-- Returns JSON with detailed error locations and counts
-- Works on both Linux and macOS
-
-## Formula Verification Checklist
-
-Quick checks to ensure formulas work correctly:
-
-### Essential Verification
-- [ ] **Test 2-3 sample references**: Verify they pull correct values before building full model
-- [ ] **Column mapping**: Confirm Excel columns match (e.g., column 64 = BL, not BK)
-- [ ] **Row offset**: Remember Excel rows are 1-indexed (DataFrame row 5 = Excel row 6)
-
-### Common Pitfalls
-- [ ] **NaN handling**: Check for null values with `pd.notna()`
-- [ ] **Far-right columns**: FY data often in columns 50+ 
-- [ ] **Multiple matches**: Search all occurrences, not just first
-- [ ] **Division by zero**: Check denominators before using `/` in formulas (#DIV/0!)
-- [ ] **Wrong references**: Verify all cell references point to intended cells (#REF!)
-- [ ] **Cross-sheet references**: Use correct format (Sheet1!A1) for linking sheets
-
-### Formula Testing Strategy
-- [ ] **Start small**: Test formulas on 2-3 cells before applying broadly
-- [ ] **Verify dependencies**: Check all cells referenced in formulas exist
-- [ ] **Test edge cases**: Include zero, negative, and very large values
-
-### Interpreting recalc.py Output
-The script returns JSON with error details:
 ```json
 {
-  "status": "success",           // or "errors_found"
-  "total_errors": 0,              // Total error count
-  "total_formulas": 42,           // Number of formulas in file
-  "error_summary": {              // Only present if errors found
-    "#REF!": {
-      "count": 2,
-      "locations": ["Sheet1!B5", "Sheet1!C10"]
+  "file": "payroll_example.xlsm",
+  "pii_masked": true,
+  "sheets_count": 3,
+  "sheets": [
+    {
+      "name": "薪資明細",
+      "sheet_state": "visible",
+      "merged_cells_count": 12,
+      "hidden_rows_count": 2,
+      "subtotal_total_rows": [45, 78],
+      "header_candidate_rows": [{"row": 3, "non_empty_cols": 38}]
     }
+  ],
+  "formula_audit": {
+    "total_formulas": 420,
+    "uncached_formula_count": 0,
+    "error_cells": [],
+    "sum_hidden_row_risks": ["薪資明細!F78"],
+    "sum_off_by_one_warnings": [],
+    "pattern_break_warnings": []
   }
 }
 ```
 
-## Best Practices
+- **`sum_hidden_row_risks`**：同一分頁存在隱藏列時，若合計格使用 `SUM(...)` 而非 `SUBTOTAL(109, ...)`，在 Python 只加總可見列時會與 Excel 顯示總額出現差額，須在匯入程式顯式校驗。
+- **`sum_off_by_one_warnings`**：偵測 `SUM(ColR1:ColR2)` 範圍下方 `R2+1` 緊接非零數值列且非「合計/小計」列，代表可能漏算新加列。
+- **`pattern_break_warnings`**：同一公式欄突然出現 1–2 格純數字手打常數覆寫（Plug / Manual override）。
 
-### Library Selection
-- **pandas**: Best for data analysis, bulk operations, and simple data export
-- **openpyxl**: Best for complex formatting, formulas, and Excel-specific features
+## 三、Node.js 無頭引擎說明
 
-### Working with openpyxl
-- Cell indices are 1-based (row=1, column=1 refers to cell A1)
-- Use `data_only=True` to read calculated values: `load_workbook('file.xlsx', data_only=True)`
-- **Warning**: If opened with `data_only=True` and saved, formulas are replaced with values and permanently lost
-- For large files: Use `read_only=True` for reading or `write_only=True` for writing
-- Formulas are preserved but not evaluated - use recalc.py to update values
+- **`hyperformula_eval.js`**：已內建自動尋找 `~/.gemini/config/skills/xlsx/node_modules`，支援 `node .agents/skills/xlsx/scripts/hyperformula_eval.js --file payload.json` 直接從專案根目錄呼叫，避免 Windows 命令列長 JSON 引號問題。
+- **`@ironcalc/wasm`**：屬於 ESM / WebAssembly 模組（`wasm_bg.wasm` + `wasm.js`），適合瀏覽器與 ESM 前端沙盒內掛載計算，CommonJS Node 腳本預設使用 `HyperFormula v3.5.0`。
 
-### Working with pandas
-- Specify data types to avoid inference issues: `pd.read_excel('file.xlsx', dtype={'id': str})`
-- For large files, read specific columns: `pd.read_excel('file.xlsx', usecols=['A', 'C', 'E'])`
-- Handle dates properly: `pd.read_excel('file.xlsx', parse_dates=['date_column'])`
+## 四、合併儲存格與雙軌清洗建議範例
 
-## Code Style Guidelines
-**IMPORTANT**: When generating Python code for Excel operations:
-- Write minimal, concise Python code without unnecessary comments
-- Avoid verbose variable names and redundant operations
-- Avoid unnecessary print statements
+```python
+from openpyxl import load_workbook
 
-**For Excel files themselves**:
-- Add comments to cells with complex formulas or important assumptions
-- Document data sources for hardcoded values
-- Include notes for key calculations and model sections
+def build_merged_lookup(ws) -> dict[tuple[int, int], object]:
+    """將合併儲存格左上角值展開映射至整個合併區塊。"""
+    lookup = {}
+    for rng in ws.merged_cells.ranges:
+        anchor = ws.cell(rng.min_row, rng.min_col).value
+        for r in range(rng.min_row, rng.max_row + 1):
+            for c in range(rng.min_col, rng.max_col + 1):
+                lookup[(r, c)] = anchor
+    return lookup
+```
+
+## 五、`openpyxl` 讀寫實務備忘
+- 列／欄皆為 **1-based** 索引（`row=1, column=1` 為 `A1`）。
+- 寫入大型檔案時使用 `write_only=True`；唯讀大檔讀取時使用 `read_only=True`。
+- 現代函數如 `XLOOKUP`、`FILTER` 寫入前必先經過 `formula_engine_hub.py xlfn` 轉譯成 `_xlfn.` / `_xlfn._xlws.`。
