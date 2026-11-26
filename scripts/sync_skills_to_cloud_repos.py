@@ -26,10 +26,21 @@ from pathlib import Path
 HOME = Path.home()
 GLOBAL_SKILLS_DIR = HOME / ".gemini" / "config" / "skills"
 GLOBAL_SCRIPTS_DIR = HOME / ".gemini" / "scripts"
+GLOBAL_AGENTS_SSOT_TEMPLATE = HOME / ".gemini" / "templates" / "agents_ssot_block.md"
 GLOBAL_CURSOR_RULES_DIR = HOME / ".cursor" / "rules"
 GLOBAL_CURSOR_SKILLS_DIR = HOME / ".cursor" / "skills"
 GLOBAL_CURSOR_COMMANDS_DIR = HOME / ".cursor" / "commands"
 GITHUB_ROOT = HOME / "Documents" / "GitHub"
+
+SYNCED_SCRIPTS = (
+    "skill_router.py",
+    "multi_model_gate.py",
+    "rule_lint.py",
+    "tier_gate.py",
+    "skill_eval_dataset.json",
+    "bootstrap_cursor_cloud.py",
+    "sync_skills_to_cloud_repos.py",
+)
 
 STOREASY_FAMILY_REPOS = [
     "Huanxin-3Dimen",
@@ -115,6 +126,13 @@ US3C_ONLY_RULES = {"us3c-domain-invariants.mdc", "us3c-incident-l-grades.mdc"}
 KNOWN_OBSOLETE_SKILL_DIRS = {
     "vercel-react-best-practices",
     "claude.ai",
+    "taste-skill",
+    "notfair-google-ads-audit",
+    "notfair-seo-analysis",
+    "workflow",
+    "composition-patterns",
+    "react-native-skills",
+    "jev-typesafe",
     "agency-automation-governance-architect",
     "agency-engineering-data-engineer",
     "agency-engineering-incident-response-commander",
@@ -332,33 +350,59 @@ def has_git_symlink_architecture(repo: Path) -> bool:
 SSOT_BEGIN = "<!-- BEGIN_LEAN_TRIAD_SSOT -->"
 SSOT_END = "<!-- END_LEAN_TRIAD_SSOT -->"
 
-CANONICAL_AGENTS_SSOT_BLOCK = """<!-- BEGIN_LEAN_TRIAD_SSOT -->
+# 防漂移備援：真相來源為 ~/.gemini/templates/agents_ssot_block.md，僅在容器/環境缺檔時退回使用
+_FALLBACK_AGENTS_SSOT_BLOCK = """<!-- BEGIN_LEAN_TRIAD_SSOT -->
 ## Cursor Cloud & Agent Skills (Lean-Triad 單一真相來源)
 
-> 本區塊由 `scripts/sync_skills_to_cloud_repos.py` 與 `scripts/bootstrap_cursor_cloud.py` 自 `~/.gemini/GEMINI.md` 及 `.cursor/rules/engineering-core.mdc` 自動同步鎖定；請勿單獨手改，避免本機與雲端規則分裂。
+> 本區塊由 `scripts/sync_skills_to_cloud_repos.py` 與 `scripts/bootstrap_cursor_cloud.py` 自 `~/.gemini/templates/agents_ssot_block.md`（同步自 `GEMINI.md` / `engineering-core.mdc`）自動鎖定；請勿單獨手改，避免本機與雲端規則分裂。
 
-- **常駐底層引擎與受保護禁區**：`🧭 Graphify 圖譜導航` + `🧰 Role-Scoped Skills 動態掛載` + `✂️ Ponytail 極簡守則` 為常駐引擎；嚴禁簡化 3D 空間幾何／財務計價／硬體 IoT FOV 校準與跨庫 API 契約。刪減 `> 15` 行、移除抽象層／檔案或指定 `/multi-agent-mode` 時強制執行 `python3 scripts/multi_model_gate.py review --prompt "..." --git-diff --output temp_multi_review.json`（Plan／子代理優先 → 官方直連 → OpenRouter；Qwen 預設使用 `qwen4-max-preview`（備援 `qwen-max`））。
+- **常駐底層引擎與受保護禁區**：`🧭 Graphify 圖譜導航` + `🧰 Role-Scoped Skills 動態掛載` + `✂️ Ponytail 極簡守則` 為常駐引擎；嚴禁簡化 3D 空間幾何／財務計價／硬體 IoT FOV 校準與跨庫 API 契約。
+- **規模 × 風險分級強制複查門禁（Tier 0–3）**：
+  - 交付前必執行 `python3 scripts/tier_gate.py assess --git-diff`（非 Git 目錄用 `--files <paths...>`；無 `scripts/` 用 `~/.gemini/scripts/tier_gate.py`），依 `required_tier = max(Scale, Risk)`（`S2+R2` 升 `T3`；4 層優先序：P1 保護清單 > P2 鎖檔/產物/symlink 排除 > P3 測試防偷刪/純文件 S1 帽 > P4 生產碼語境分軌）驗收，T2/T3 並跑 `python3 scripts/tier_gate.py verify-pass --git-diff`：
+  | Tier | 規模（生產碼 `add+del` / 新增 / 刪減 / 檔數 / 新模組>=40行） | 風險自動升格（路徑或變動行，哪怕改 1 行；UI 純展示豁免裸詞） | 強制驗證與獨立複查（禁作者自寫 mock 驗收） |
+  | :--- | :--- | :--- | :--- |
+  | **T0** | `<=15` / `<=15` / `<=5` / `1` 檔 / `0` 新模組（純文案/CSS 上限 S1） | `R0` 純文案、註解、靜態樣式 | `rule_lint --git-diff` + 既有測試；免開子代理／多模型 |
+  | **T1** | `16–60` / `16–50` / `6–15` / `1–2` 檔 / `0` 新模組 | `R1` 一般邏輯、UI 互動、一般測試 | `T0` + 補 `>=1` 失敗邊界單測 + 型別檢查（UI 補 `agent-desktop`/`e2e`） |
+  | **T2** | `61–200` / `51–150` / `16–60` / `3–5` 檔 / `>=1` 新模組 | `R2` `routers/api/webhook/crawler/upload/config/parser/indexer/mcp`、SQL 查詢寫入、測試刪斷言 `>15` 行 | `T1` + `multi_model_gate review`（`PASS`/`PASS_DEGRADED`）+ **1 名獨立唯讀複查者** + 真實資料抽核 + `>=5` 對抗邊界 |
+  | **T3** | `>200` / `>150` / `>60` / `>=6` 檔 / `>=2` 新模組（或單檔 `>=150` 行）或 `S2+R2` | `R3` `auth/security/rbac/secret/blacklist`、`migrations/turso/supabase/DDL/破壞性SQL`、門禁與規則自身（`GEMINI.md`/`AGENTS.md`/`DECISIONS.md`/`.cursor/rules/*`/`tier_gate`/`rule_lint`/`multi_model_gate`）、`3D/DXF/FOV/財務計價/薪資/sha256/只作廢不刪除`、跨 repo 契約 | `T2` + `multi_model_gate review --include-grok-api`（`PASS`/`PASS_DEGRADED`）+ **3 角色唯讀 `stage-gate-review`**（邏輯破壞/真實語料稽核/對抗 Fuzz 與密鑰掃描；Python I/O 補 CP950 實測）；0 CRITICAL/HIGH 方可放行 |
+  - **模型調度三鐵律與降級協議**：Grok 走 Cursor Plan / `grok.exe` Plan；Gemini 外部腳本清空 API Key 優先 `agy.exe --mode plan` → 失敗才退 DPAPI 官方直連 → OpenRouter；Qwen 預設 `qwen4-max-preview`（備 `qwen-max`）。外部 API 故障時具 `>=2` 異質供應商且 0 紅燈並由異質紅隊補位可降級 `PASS_DEGRADED`；全斷網僅限人類設 `LEAN_TRIAD_BYPASS_REASON` 留痕，嚴禁 AI 自填。
+  - **反偽造獨立複查鐵律**：獨立複查僅認 Swarm `board#seq`（`agent != author`）、Subagent ID 或 `multi_model_gate` 真實 `request_id`，**硬拒** `cursor-plan-delegated` / `unknown` 與同 Context 自演；T3 缺獨立唯讀角色禁止宣告完成。
 - **確定性門禁與技能路由**：
-  - 改碼後強制執行確定性檢查：`python3 scripts/rule_lint.py --git-diff`（自動攔截 UI Emoji、按鈕過長或缺 `aria-label`/`title`、`<input type="date" lang="en" />` 缺漏、`dangerouslySetInnerHTML`、`.skip`／空 `catch` 與 `TODO:`/`FIXME:`/`HACK:`/`XXX:` 藉口註解；僅允許 `// shortcut: <上限條件>, <何時該升級>`）。
-  - 前端 UI 遵循 `stageshow` × `impeccable` × `design-taste-frontend`（詳見 `.cursor/rules/react-typescript.mdc`）；精簡按鈕時**嚴禁刪除**不可逆風險警告、交易計價／稅額條件、合規聲明與專案 SEO/GEO 訊號。
-  - 檢索最佳技能：`python3 scripts/skill_router.py route "<任務描述>"` | 預覽技能矩陣：`python3 scripts/multi_model_gate.py plan-skills --prompt "<任務描述>"`
+  - 改碼後必跑 `python3 scripts/rule_lint.py --git-diff`（攔截 UI Emoji、按鈕過長/缺 A11y、`<input type="date" lang="en" />`、`.skip`/空 `catch`、`TODO:`/`FIXME:`/`HACK:`/`XXX:`、裸 `bool(str)`/缺 UTF-8/密鑰字面值；僅允許 `// shortcut: <上限條件>, <何時該升級>`）。
+  - 前端 UI 遵循 `stageshow` × `impeccable` × `design-taste-frontend`（`.cursor/rules/react-typescript.mdc`）；精簡時禁刪不可逆警告、交易計價/稅額、合規聲明與 SEO/GEO 訊號。
+  - 技能檢索：`python3 scripts/skill_router.py route "<任務描述>"` | 技能矩陣：`python3 scripts/multi_model_gate.py plan-skills --prompt "<任務描述>"`
 - **任務結案白話總結與人機雙讀（`/eli5` × `/ponytail`）**：
-  - 改碼與簡化走 `/ponytail`；每次完整任務交付之「**完成項目**」與「**重點任務總結**」（含 PR 摘要、SOP、故障復盤及 `// shortcut:` 說明）一律套用 `/eli5`——先用白話講清對使用者的實際影響與前後差異，同時保留檔案路徑／API 原文供工程追溯，絕不在演算法／契約層稀釋精度。
-  - 更新 `README.md` 採雙層標準：上半部給人看（`/eli5` 白話定位與流程＋`/diagram-design` 中文架構圖 `nodes <= 9, edges <= 12`），下半部給 AI／工程師看（全庫真實結構、啟動測試指令與跨庫紅線；詳見 `~/.gemini/memory/eli5_ponytail_readme_dual_reading.md`）。
+  - 改碼走 `/ponytail`；結案之「完成項目」與「重點任務總結」走 `/eli5`（先白話說明影響與差異，再保留檔案路徑／API 原文，不稀釋演算法／契約精度）。
+  - `README.md` 採雙層標準：上半部給人看（`/eli5` 白話＋`/diagram-design` 中文架構圖 `nodes <= 9, edges <= 12`），下半部給 AI／工程師看（全庫真實結構、啟動測試指令與跨庫紅線）。
 - **收尾誠實揭露與極簡防重複回條（Final-Turn Compact Lean-Triad Receipt）**：
-  - **🚫 嚴禁輸出回條之場景（防 Token 浪費）**：等待背景任務（`run_command` / `Shell` / subagent）完成的中繼進度回覆、純合併／部署狀態回報、澄清提問、純問答或閒聊，或**同一任務無新程式碼變更時，絕對禁止附上執行回條**。
-  - **🚫 嚴禁正文與回條內容重複（Anti-Duplication Rule）**：回條每欄僅限填寫**關鍵字、路徑、行數或指令結果**（每欄 `<= 60` 字），**嚴禁把正文寫過的結論、PR 編號或背景敘述重抄進回條**；反之，已寫入回條的測試通過數、行數統計與略過邊界，正文**不再重複條列**。
-  - **✅ 最終交付格式**（僅在「任務最終完成交付」結尾輸出一次精簡逐行版回條）：
+  - **🚫 禁輸出場景**：中繼進度、純合併/部署回報、澄清提問、純問答閒聊，或無新程式碼變更時禁附回條。**🚫 防重複**：每欄僅填關鍵字/路徑/行數/結果（`<= 60` 字），正文與回條不互抄。
+  - **✅ 最終交付格式**（僅在最終完成交付結尾輸出一次；T2/T3 缺真實 `req`、`pass:` 或獨立複查一律視為未驗收）：
     ```markdown
     ---
     **🛡️ Lean-Triad**
     - 🧰 **Skills**：`<Skills>`
     - 🧭 **Graphify**：`<節點 / update>`
     - ✂️ **Ponytail**：`+<新增> / -<刪除> 行 (shortcut: <無或註記>)`
-    - ⚖️ **Gate & QA**：`<multi_model_gate 真實 verdict/score/req_ids（若未跑腳本強制填「未執行 multi_model_gate」，嚴禁單一模型自評冒充）＋ 測試通過數>`
+    - ⚖️ **Gate & QA**：`<tier_token> | gate:<PASS|PASS_DEGRADED|T0-T1免跑>(score, req=<id1,id2>) | review:<board#seq|subagent:id|NONE> | pass:<path|N/A> | tests:<n/n>`
     - ⚠️ **邊界**：`<略過項目與風險>`
     ```
 <!-- END_LEAN_TRIAD_SSOT -->"""
+
+
+def load_canonical_agents_ssot_block() -> str:
+    """優先自單一真相模板 ~/.gemini/templates/agents_ssot_block.md 載入受管區塊，缺檔才退回 inline fallback。"""
+    if GLOBAL_AGENTS_SSOT_TEMPLATE.is_file():
+        try:
+            text = GLOBAL_AGENTS_SSOT_TEMPLATE.read_text(encoding="utf-8").strip()
+            if SSOT_BEGIN in text and SSOT_END in text:
+                return text
+        except OSError:
+            # Fall back to inline SSOT block when template file cannot be read
+            pass
+    return _FALLBACK_AGENTS_SSOT_BLOCK
+
+
+CANONICAL_AGENTS_SSOT_BLOCK = load_canonical_agents_ssot_block()
 
 
 def sync_ssot_rules_from_gemini_md(dry_run: bool = False) -> dict:
@@ -420,10 +464,11 @@ def ensure_agents_md_ssot(repo: Path, dry_run: bool = False, repo_name: str | No
     若原本已有舊版 `## Lean-Triad 執行回條` 或 `## Cursor Cloud & Agent Skills (Lean-Triad)` 則原位替換為受管區塊。
     """
     target_name = repo_name or repo.name
+    ssot_block = load_canonical_agents_ssot_block()
     agents_md = repo / "AGENTS.md"
     if not agents_md.is_file():
         if not dry_run:
-            agents_md.write_text(f"# AGENTS.md — {target_name}\n\n{CANONICAL_AGENTS_SSOT_BLOCK}\n", encoding="utf-8")
+            agents_md.write_text(f"# AGENTS.md — {target_name}\n\n{ssot_block}\n", encoding="utf-8")
         return True
 
     original = agents_md.read_text(encoding="utf-8")
@@ -434,7 +479,7 @@ def ensure_agents_md_ssot(repo: Path, dry_run: bool = False, repo_name: str | No
             re.escape(SSOT_BEGIN) + r".*?" + re.escape(SSOT_END),
             re.DOTALL,
         )
-        updated = pattern.sub(CANONICAL_AGENTS_SSOT_BLOCK, updated)
+        updated = pattern.sub(lambda _: ssot_block, updated)
     else:
         legacy_patterns = [
             re.compile(
@@ -449,18 +494,18 @@ def ensure_agents_md_ssot(repo: Path, dry_run: bool = False, repo_name: str | No
         replaced = False
         for lp in legacy_patterns:
             if lp.search(updated):
-                updated = lp.sub(CANONICAL_AGENTS_SSOT_BLOCK + "\n", updated, count=1)
+                updated = lp.sub(lambda _: ssot_block + "\n", updated, count=1)
                 replaced = True
                 break
         if not replaced:
             if "\n## graphify" in updated:
                 updated = updated.replace(
                     "\n## graphify",
-                    f"\n{CANONICAL_AGENTS_SSOT_BLOCK}\n\n## graphify",
+                    f"\n{ssot_block}\n\n## graphify",
                     1,
                 )
             else:
-                updated = updated.rstrip() + f"\n\n{CANONICAL_AGENTS_SSOT_BLOCK}\n"
+                updated = updated.rstrip() + f"\n\n{ssot_block}\n"
 
     if updated != original:
         if not dry_run:
@@ -473,26 +518,43 @@ PRE_COMMIT_BEGIN = "# BEGIN_LEAN_TRIAD_RULE_LINT_HOOK"
 PRE_COMMIT_END = "# END_LEAN_TRIAD_RULE_LINT_HOOK"
 PRE_COMMIT_HOOK_BLOCK = """# BEGIN_LEAN_TRIAD_RULE_LINT_HOOK
 _LT_REPO_ROOT="$(git rev-parse --show-toplevel 2>/dev/null || pwd)"
+_LT_PY=""
+for _lt_cand in python3 python; do
+  if command -v "$_lt_cand" >/dev/null 2>&1 && "$_lt_cand" -c "import sys" >/dev/null 2>&1; then
+    _LT_PY="$_lt_cand"
+    break
+  fi
+done
 _LT_LINT="$_LT_REPO_ROOT/scripts/rule_lint.py"
 if [ ! -f "$_LT_LINT" ] || ! grep -q -- "--staged" "$_LT_LINT" 2>/dev/null; then
-  [ -f "$HOME/.gemini/scripts/rule_lint.py" ] && _LT_LINT="$HOME/.gemini/scripts/rule_lint.py"
+  if [ -f "$HOME/.gemini/scripts/rule_lint.py" ]; then
+    _LT_LINT="$HOME/.gemini/scripts/rule_lint.py"
+  fi
 fi
-if [ -f "$_LT_LINT" ]; then
-  _LT_PY=""
-  for _lt_cand in python3 python; do
-    if command -v "$_lt_cand" >/dev/null 2>&1 && "$_lt_cand" -c "import sys" >/dev/null 2>&1; then
-      _LT_PY="$_lt_cand"
-      break
-    fi
-  done
-  if [ -n "$_LT_PY" ]; then
-    _lt_out="$("$_LT_PY" "$_LT_LINT" --git-diff --staged --repo "$_LT_REPO_ROOT" 2>&1)"
-    _lt_rc=$?
-    if [ "$_lt_rc" -ne 0 ]; then
-      printf '%s\\n' "$_lt_out" | head -n 30
-      echo "[pre-commit][Rule-Lint Gate] 發現違規（exit=$_lt_rc），請依上方提示修正後再 commit。"
-      exit 1
-    fi
+if [ -f "$_LT_LINT" ] && [ -n "$_LT_PY" ]; then
+  _lt_rc=0
+  _lt_out="$("$_LT_PY" "$_LT_LINT" --git-diff --staged --repo "$_LT_REPO_ROOT" 2>&1)" || _lt_rc=$?
+  if [ "$_lt_rc" -ne 0 ]; then
+    printf '%s\\n' "$_lt_out" | head -n 30
+    echo "[pre-commit][Rule-Lint Gate] 發現違規（exit=$_lt_rc），請依上方提示修正後再 commit。"
+    exit 1
+  fi
+fi
+_LT_TIER="$_LT_REPO_ROOT/scripts/tier_gate.py"
+if [ ! -f "$_LT_TIER" ]; then
+  if [ -f "$HOME/.gemini/scripts/tier_gate.py" ]; then
+    _LT_TIER="$HOME/.gemini/scripts/tier_gate.py"
+  fi
+fi
+if [ -f "$_LT_TIER" ] && [ -n "$_LT_PY" ]; then
+  _lt_tier_rc=0
+  _lt_tier_out="$(cd "$_LT_REPO_ROOT" && "$_LT_PY" "$_LT_TIER" verify-pass --git-diff --staged --tier-mode r3-enforce 2>&1)" || _lt_tier_rc=$?
+  if [ "$_lt_tier_rc" -ne 0 ]; then
+    printf '%s\\n' "$_lt_tier_out" | head -n 30
+    echo "[pre-commit][Tier-Gate] R3/T3 變更未通過驗證（exit=$_lt_tier_rc）；請補跑多模型會審與獨立複查，或由人類設定 LEAN_TRIAD_BYPASS_REASON 留痕。"
+    exit 1
+  elif printf '%s\\n' "$_lt_tier_out" | grep -Eq '"action"[[:space:]]*:[[:space:]]*"warn"'; then
+    printf '%s\\n' "$_lt_tier_out" | head -n 15
   fi
 fi
 # END_LEAN_TRIAD_RULE_LINT_HOOK"""
@@ -659,18 +721,11 @@ def sync_repo(repo: Path, global_skills: list[Path], rules_only: bool = False, d
                 shutil.copy2(mdc, dst_rule)
         rules_synced += 1
 
-    # 2. 同步跨平台腳本至 scripts/（納入 rule_lint.py）
+    # 2. 同步跨平台腳本至 scripts/（納入 rule_lint.py 與 tier_gate.py）
     scripts_dst = repo / "scripts"
     if not dry_run:
         scripts_dst.mkdir(parents=True, exist_ok=True)
-    for fname in (
-        "skill_router.py",
-        "multi_model_gate.py",
-        "rule_lint.py",
-        "skill_eval_dataset.json",
-        "bootstrap_cursor_cloud.py",
-        "sync_skills_to_cloud_repos.py",
-    ):
+    for fname in SYNCED_SCRIPTS:
         src_f = GLOBAL_SCRIPTS_DIR / fname
         dst_f = scripts_dst / fname
         if src_f.is_file():
@@ -846,7 +901,14 @@ def sync_repo(repo: Path, global_skills: list[Path], rules_only: bool = False, d
     for s_dir in family_skills:
         dir_name = s_dir.name
         fm_name = read_frontmatter_name(s_dir / "SKILL.md")
-        skill_files_changed += copy_clean_skill_dir(s_dir, agents_skills_dst / dir_name, dry_run=dry_run)
+        if dir_name != fm_name:
+            for sub_dir in cleanup_dirs:
+                stale_twin = sub_dir / dir_name
+                if stale_twin.is_dir():
+                    planned_actions.append(f"delete:{sub_dir.relative_to(repo).as_posix()}/{dir_name}")
+                    if not dry_run:
+                        _remove_readonly_tree(stale_twin)
+        skill_files_changed += copy_clean_skill_dir(s_dir, agents_skills_dst / fm_name, dry_run=dry_run)
         if not same_target:
             skill_files_changed += copy_clean_skill_dir(s_dir, cursor_skills_dst / fm_name, dry_run=dry_run)
         skill_count += 1

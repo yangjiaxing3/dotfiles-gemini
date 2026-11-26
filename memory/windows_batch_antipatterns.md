@@ -1,3 +1,12 @@
+---
+id: mem-windows-batch-antipatterns
+brand: shared-eng
+tier: L2_ANTIPATTERN
+status: active
+valid_from: "2026-11-26"
+scope_repos: []
+---
+
 # [PatternExtract] Windows Batch Scripts 安全啟動與解析陷阱 (Post-Mortem)
 
 ## 📌 Context

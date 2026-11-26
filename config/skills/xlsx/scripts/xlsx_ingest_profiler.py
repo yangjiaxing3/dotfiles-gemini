@@ -17,7 +17,6 @@ import json
 import posixpath
 import re
 import sys
-import xml.etree.ElementTree as ET
 import zipfile
 from pathlib import Path
 from typing import Any
@@ -25,9 +24,11 @@ from typing import Any
 
 def _bootstrap_venv() -> None:
     try:
+        import defusedxml  # noqa: F401
         import openpyxl  # noqa: F401
         return
     except ImportError:
+        # 當前執行環境缺少相依套件時，繼續掛載下方候選 .venv
         pass
     candidates = [
         Path(__file__).resolve().parent / ".venv" / "Lib" / "site-packages",
@@ -40,6 +41,10 @@ def _bootstrap_venv() -> None:
 
 _bootstrap_venv()
 
+try:
+    from defusedxml import ElementTree as ET  # noqa: E402
+except ImportError:
+    from xml.etree import ElementTree as ET  # type: ignore  # noqa: E402
 from openpyxl import load_workbook  # noqa: E402
 from openpyxl.utils import get_column_letter, column_index_from_string  # noqa: E402
 
@@ -56,6 +61,11 @@ SUBTOTAL_FORMULA_RE = re.compile(r"\b(?:SUMIF|SUMIFS|SUBTOTAL|SUM|AVERAGE)\s*\("
 ROC_DATE_RE = re.compile(r"^(?:1[0-2]\d|\d{2,3})[./-](?:0?[1-9]|1[0-2])[./-](?:0?[1-9]|[12]\d|3[01])$")
 TW_ID_RE = re.compile(r"\b[A-Z][12]\d{8}\b")
 PHONE_RE = re.compile(r"\b09\d{2}[- ]?\d{3}[- ]?\d{3}\b")
+PII_HEADER_KW_RE = re.compile(
+    r"(?:客戶|姓名|承租人|聯絡人|電話|手機|信箱|地址|身分證|統編|帳號|系統編號|合約編"
+    r"|\bname\b|\bcustomer\b|\btenant\b|\bphone\b|\bmobile\b|\bemail\b|\baddress\b|\bsys\s*code\b)",
+    re.I,
+)
 SUM_RANGE_RE = re.compile(r"\bSUM\(\s*\$?([A-Z]{1,3})\$?(\d+)\s*:\s*\$?([A-Z]{1,3})\$?(\d+)\s*\)", re.I)
 CELL_COORD_RE = re.compile(r"^([A-Z]{1,3})(\d+)$")
 DIM_RANGE_RE = re.compile(r"^(?:[A-Z]{1,3}\d+:)?([A-Z]{1,3})(\d+)$")
@@ -128,7 +138,7 @@ def _col_str_to_idx(col_str: str) -> int:
     return idx
 
 
-def _extract_text_no_phonetic(parent_elem: ET.Element) -> str:
+def _extract_text_no_phonetic(parent_elem: Any) -> str:
     """從 <si> 或 <is> 串接文字，明確略過台灣 Excel 常見的 <rPh> 注音標記。"""
     parts: list[str] = []
     for child in parent_elem:
@@ -190,6 +200,7 @@ def _parse_date_style_indices(zf: zipfile.ZipFile) -> set[int]:
                             if nid in BUILTIN_DATE_FMT_IDS or custom_is_date.get(nid, False):
                                 date_indices.add(idx)
                         except ValueError:
+                            # 非整數 numFmtId 樣式略過，不影響其餘日期樣式解析
                             pass
                         idx += 1
                 break
@@ -258,6 +269,7 @@ def _analyze_sheet_matrix(
     header_scores: list[tuple[int, int, list[dict[str, str]]]] = []
     subtotal_rows: list[int] = []
     subtotal_set: set[int] = set()
+    pii_cols: set[int] = set()
 
     col_stats: dict[int, dict[str, Any]] = {
         c: {
@@ -282,6 +294,8 @@ def _analyze_sheet_matrix(
     for r in range(1, max_r + 1):
         non_empty_headers: list[dict[str, str]] = []
         row_has_subtotal = False
+        data_like_cells = 0
+        row_pii_cols: list[int] = []
 
         for c in range(1, max_c + 1):
             val_f = cells_f.get((r, c))
@@ -291,11 +305,22 @@ def _analyze_sheet_matrix(
             if c <= 8 and isinstance(val_v, str) and SUBTOTAL_KW_RE.search(val_v):
                 row_has_subtotal = True
 
-            if r <= 15 and val_v is not None and str(val_v).strip():
-                non_empty_headers.append({
-                    "col": get_column_letter(c),
-                    "label": _mask_header_label(val_v),
-                })
+            if r <= 15:
+                if (
+                    is_formula
+                    or _is_numeric_val(val_v)
+                    or isinstance(val_v, (dt.date, dt.datetime))
+                    or (isinstance(val_v, str) and bool(ROC_DATE_RE.match(val_v.strip())))
+                ):
+                    data_like_cells += 1
+                if val_v is not None and str(val_v).strip():
+                    if isinstance(val_v, str) and PII_HEADER_KW_RE.search(val_v):
+                        row_pii_cols.append(c)
+                    hdr_label = "<MASKED_PII>" if (mask_pii and c in pii_cols) else _mask_header_label(val_v)
+                    non_empty_headers.append({
+                        "col": get_column_letter(c),
+                        "label": hdr_label,
+                    })
 
             coord = f"{sname}!{get_column_letter(c)}{r}"
             if is_formula:
@@ -324,6 +349,8 @@ def _analyze_sheet_matrix(
                         break
 
             stat_key, token_lbl = _classify_token(val_f if is_formula else val_v)
+            if mask_pii and c in pii_cols and r > 1 and token_lbl != "<EMPTY>":
+                token_lbl = "<MASKED_PII>"
             st = col_stats[c]
             st[stat_key] += 1
             if len(st["sample_tokens"]) < max(1, max_sample_rows):
@@ -344,8 +371,13 @@ def _analyze_sheet_matrix(
             if len(subtotal_rows) < 20:
                 subtotal_rows.append(r)
 
-        if r <= 15 and len(non_empty_headers) >= 3:
-            header_scores.append((len(non_empty_headers), r, non_empty_headers))
+        if r <= 15:
+            # 真表頭列以欄位名稱字串為主；若數值/日期/公式格佔非空欄 >= 35%，必為資料明細列而非表頭
+            is_header_like = bool(non_empty_headers) and (data_like_cells * 100 < len(non_empty_headers) * 35)
+            if is_header_like and row_pii_cols:
+                pii_cols.update(row_pii_cols)
+            if len(non_empty_headers) >= 3 and is_header_like:
+                header_scores.append((len(non_empty_headers), r, non_empty_headers))
 
     # 第二遍：精準檢核 SUM Off-by-one（排除小計/SUMIF/SUBTOTAL 列誤報）
     for r, _c, coord, val_f in sum_candidates:

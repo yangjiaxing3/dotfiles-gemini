@@ -1,4 +1,15 @@
+---
+id: mem-ruflo-swarm-v3-models-2026
+brand: shared-eng
+tier: L2_DECISION
+status: voided
+valid_from: "2026-10-01"
+scope_repos: []
+---
+
 # Ruflo Swarm V3 最新模型基準記憶 (2026-10)
+
+> **[VOIDED / 已作廢]** 本檔所載 2026-10 舊世代模型矩陣已作廢，已被現行 `~/.gemini/GEMINI.md` 之 Ruflo Swarm V3 模型基準（`gemini-4-neon-xhigh` / `gemini-4-hydrogen-xhigh` / `grok-4.7` / `qwen4-max-preview`）取代；依「只作廢不刪除」鐵律保留原文供歷史追溯，請勿再引用。
 
 > **[Anti-Pattern 錯誤模式]**
 > 誤用舊世代模型名稱（如 `claude-3-5-sonnet`、`deepseek-flash` 或舊版 `grok-4.6`）配置多代理工作流，導致紅隊審查與重構能力未對齊最新算力。

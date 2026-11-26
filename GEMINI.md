@@ -24,13 +24,18 @@
      - **3D 模擬器與空間幾何公式**：3D 物品擺放計算 (Bin Packing / Placement)、碰撞偵測 (Bounding Box / Raycasting)、矩陣旋轉、視角投影、DXF 幾何解析與空間座標轉換。
      - **財務與計價核算公式**：租金精算、材積／面積換算、促銷折扣分攤、進位與邊界條件。
      - **硬體／IoT 校準與跨庫契約**：攝影機 FOV 角度計算、IoT 狀態判定、API 欄位契約與資安權限校驗。
-3. **[CRITICAL] 架構簡化強制異質多模型會審 (Cross-Model Simplification Gate)**：
-   - **凡涉及架構簡化、移除抽象層／Wrapper、合併模組、刪除檔案或單次刪減 `> 15` 行邏輯，嚴禁單一模型自作主張修改！**
-   - **模型調度三鐵律（Plan & 子代理額度優先 → 官方直連 API → OpenRouter 最後備援）**：
+3. **[CRITICAL] 規模 × 風險分級強制複查門禁 (Tier 0–3)**：
+   - 交付前強制執行 `python scripts/tier_gate.py assess --git-diff`（非 Git 目錄用 `--files <paths...>`；無 `scripts/` 用 `~/.gemini/scripts/tier_gate.py`），依機讀 `required_tier = max(Scale, Risk)`（`S2+R2` 升 `T3`；4 層優先序：P1 保護清單 > P2 鎖檔/產物/symlink 排除 > P3 測試防偷刪/純文件 S1 帽 > P4 生產碼語境分軌）驗收，T2/T3 並須通過 `python scripts/tier_gate.py verify-pass --git-diff`：
+     - **T0**（生產碼 `add+del <=15` / 新增 `<=15` / 刪減 `<=5` / `1` 檔 / `0` 新模組；`R0` 純文案/註解/樣式，純文案/CSS 上限 S1）：`rule_lint --git-diff` + 既有測試；免開子代理／多模型。
+     - **T1**（`16–60` / `16–50` / `6–15` / `1–2` 檔 / `0` 新模組；`R1` 一般邏輯/UI 互動/測試）：`T0` + 補 `>=1` 失敗邊界單測 + 型別檢查（UI 補 `agent-desktop`/`e2e`）。
+     - **T2**（`61–200` / `51–150` / `16–60` / `3–5` 檔 / `>=1` 新模組>=40行；`R2` `routers/api/webhook/crawler/upload/config/parser/indexer/mcp`、SQL 查詢寫入、測試刪斷言 `>15` 行）：`T1` + `multi_model_gate review`（`PASS`/`PASS_DEGRADED`）+ **1 名獨立唯讀複查者** + 真實資料抽核 + `>=5` 對抗邊界。
+     - **T3**（`>200` / `>150` / `>60` / `>=6` 檔 / `>=2` 新模組或單檔 `>=150` 行，或 `S2+R2`；`R3` `auth/security/rbac/secret/blacklist`、`migrations/turso/supabase/DDL/破壞性SQL`、門禁與規則自身、`3D/DXF/FOV/財務計價/薪資/sha256/只作廢不刪除`、跨 repo 契約）：`T2` + `multi_model_gate review --include-grok-api`（`PASS`/`PASS_DEGRADED`）+ **3 角色唯讀 `stage-gate-review`**（邏輯破壞/真實語料稽核/對抗 Fuzz 與密鑰掃描；Python I/O 補 CP950 實測）；0 CRITICAL/HIGH 方可放行。
+   - **模型調度三鐵律與降級協議（Plan & 子代理額度優先 → 官方直連 API → OpenRouter 最後備援）**：
      1. **`grok` 優先走 Cursor Plan；Gemini 外部腳本（`multi_model_gate.py`）預設第一順位清空子程序 `GEMINI_API_KEY`/`GOOGLE_API_KEY`，改走 `agy.exe --mode plan` 消耗 Antigravity Plan Quota；其他模型亦優先走 IDE 子代理額度**。
      2. **除非明確指示（`--force-gemini-api` / `FORCE_GEMINI_API=1`）或 Plan 未登入／Quota 不足失敗，才退回讀取 Windows DPAPI（`%LOCALAPPDATA%\US3C\Secrets\multi-model-keys.dpapi.xml` 或 `~/.gemini/secrets/multi_model_keys.env`）直打官方 API（`deepseek_direct`, `qwen_direct`, `gemini_direct`, `typesafe`）；直連全敗後才走 OpenRouter**。
      3. **Qwen 模型預設使用 `qwen4-max-preview`（備援 `qwen-max`）**。
-   - 觸發門禁時執行 `python scripts/multi_model_gate.py review --prompt "..." --git-diff --output temp_multi_review.json`（專案無 `scripts/` 則用 `python ~/.gemini/scripts/multi_model_gate.py ...`），依下方 Ruflo Swarm V3 流程調動異質模型取得 `request_id` 與 `gate_verdict`；獲准後才執行最小變更。
+     4. **Degraded Redteam Protocol**：外部 API 故障時，僅在 0 紅燈、`>=2` 異質供應商存活且由異質紅隊補位時降級為 `PASS_DEGRADED` 並透明留痕；全斷網僅限人類設 `LEAN_TRIAD_BYPASS_REASON` 緊急通關，嚴禁 AI 自填。
+   - **反偽造獨立複查鐵律**：獨立複查僅認 Swarm `board#seq`（`agent != author`）、Subagent ID 或 `multi_model_gate` 真實 `request_id`，**硬拒** `cursor-plan-delegated` / `unknown` 與同 Context 自演；T3 缺獨立唯讀角色禁止宣告完成。
 4. **確定性檢查與妥協留痕 (`shortcut:`)**：
    - 改碼後強制執行確定性檢查：`python scripts/rule_lint.py --git-diff`（專案無 `scripts/` 則用 `python ~/.gemini/scripts/rule_lint.py --git-diff`）。
    - 無必要不寫註解；僅在無法從程式碼看出不變量時簡短解釋「**為什麼**」。**嚴禁** `TODO:`、`FIXME:`、`HACK:`、`XXX:` 或 `temporary workaround` 等逃生門註解（由 `rule_lint.py` 攔截）；若採有上限捷徑，強制加註 `// shortcut: <上限條件>, <何時該升級>`（可由 `/ponytail-debt` 盤點）。
@@ -39,14 +44,14 @@
 6. **收尾誠實揭露與極簡執行回條 (Final-Turn Compact Lean-Triad Receipt)**：
    - **🚫 嚴禁輸出回條之場景（防 Token 浪費）**：等待背景任務（`run_command` / subagent）完成的中繼進度回覆、純合併／部署狀態回報、澄清提問、純問答或閒聊，或**同一任務無新程式碼變更時，絕對禁止附上執行回條**。
    - **🚫 嚴禁正文與回條內容重複（Anti-Duplication Rule）**：回條每欄僅限填寫**關鍵字、路徑、行數或指令結果**（每欄 `<= 60` 字），**嚴禁把正文寫過的結論、PR 編號或背景敘述重抄進回條**；反之，已寫入回條的測試通過數、行數統計與略過邊界，正文**不再重複條列**。
-   - **✅ 僅在「任務最終完成交付（Final Delivery Turn）」結尾輸出一次精簡逐行版回條**：
+   - **✅ 僅在「任務最終完成交付（Final Delivery Turn）」結尾輸出一次精簡逐行版回條**（T2/T3 缺真實 `req`、`pass:` 或獨立複查一律視為未驗收，嚴禁單一模型自評或 `cursor-plan-delegated` 冒充）：
    ```markdown
    ---
    **🛡️ Lean-Triad**
    - 🧰 **Skills**：`<Skills>`
    - 🧭 **Graphify**：`<節點 / update>`
    - ✂️ **Ponytail**：`+<新增> / -<刪除> 行 (shortcut: <無或註記>)`
-   - ⚖️ **Gate & QA**：`<multi_model_gate 真實 verdict/score/req_ids（若未跑腳本強制填「未執行 multi_model_gate」，嚴禁單一模型自評冒充）＋ 測試通過數>`
+   - ⚖️ **Gate & QA**：`<tier_token> | gate:<PASS|PASS_DEGRADED|T0-T1免跑>(score, req=<id1,id2>) | review:<board#seq|subagent:id|NONE> | pass:<path|N/A> | tests:<n/n>`
    - ⚠️ **邊界**：`<略過項目與風險>`
    ```
 

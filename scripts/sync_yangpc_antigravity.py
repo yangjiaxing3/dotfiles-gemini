@@ -137,6 +137,7 @@ def export_bundle(dropbox_sync_dir: Path) -> dict:
         "rules",
         "hooks",
         "scripts",
+        "templates",
         "memory",
         "cursor-rules",
         "antigravity/global_workflows",
@@ -190,6 +191,7 @@ def apply_bundle(source_dir: Path) -> dict:
             "rules",
             "hooks",
             "scripts",
+            "templates",
             "memory",
             "cursor-rules",
             "antigravity/global_workflows",
@@ -236,6 +238,7 @@ def apply_bundle(source_dir: Path) -> dict:
 
     # 自動同步目標電腦 GitHub 各專案下的確定性檢查/閘門腳本與本機 DPAPI 金鑰工蜂腳本
     sync_script_names = (
+        "tier_gate.py",
         "multi_model_gate.py",
         "rule_lint.py",
         "skill_router.py",

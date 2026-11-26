@@ -1,3 +1,12 @@
+---
+id: mem-kiosk-official-api-anti-mock-pin
+brand: us3c
+tier: L2_CONTRACT
+status: active
+valid_from: "2026-11-26"
+scope_repos: [us3c-next, us3cdriverapp]
+---
+
 # Kiosk 官方 7 支 API 與取件碼禁假碼規範 (Skeptical Audit Pattern)
 
 ## [Anti-Pattern 錯誤模式]
@@ -9,10 +18,10 @@
 
 ## [Correct-Pattern 正確作法]
 1. **嚴格對位官方 7 支 API（`tab=t.agt1jidrjy40#heading=h.57gl23klpyxe`）**：
-   - **API 1 (`get_kiosk_machine_list.php`)**：`POST application/x-www-form-urlencoded` + `checksum = MD5(yyyyMMdd + "sogo_on_web_2021")`。
+   - **API 1 (`get_kiosk_machine_list.php`)**：`POST application/x-www-form-urlencoded` + `checksum = MD5(yyyyMMdd + <KIOSK_WEB_SALT>)`（鹽值由環境變數 `KIOSK_WEB_SALT` 注入，嚴禁明文記載）。
    - **API 2 (`get_r3_order.php`)**：`POST` 帶 `recycling_machine_id` + `checksum`，即時取得機台 R3 待取訂單明細（`order_id`, `model_name`, `inquiry_no`, `order_price`）。
    - **API 3 (`securaze_deviceidquery_proxy.php`)** & **API 4 (`kiosk_deviceidquery_proxy.php`)**：`POST` 帶 `deviceids`（至少 6 碼）。
-   - **API 5 (`get_appraisal_info`)**：`POST` 帶 `order_id` + `checksum = MD5(order_id + "us3ctk")`，並剝除外層 XML `<string>...</string>` 後解析 JSON。
+   - **API 5 (`get_appraisal_info`)**：`POST` 帶 `order_id` + `checksum = MD5(order_id + <KIOSK_TOKEN_SALT>)`（鹽值由環境變數 `KIOSK_TOKEN_SALT` 注入，嚴禁明文記載），並剝除外層 XML `<string>...</string>` 後解析 JSON。
    - **API 6 (`generate_logistics_pwd.php`)**：帶 `u_ino`, `u_name`, `recycling_machine_id`, `checksum`；若回傳 `status: "fail"` 且含 `existing_pwd`（`"此機台已有尚未使用的密碼，請先取消後再產生"`），應直接採用 `existing_pwd` 與 `existing_pickup_no` 顯示，並提供「註銷並重新產碼」按鈕。
    - **API 7 (`logistics_pwd_cancel.php`)**：帶 `u_ino`, `u_name`, `recycling_machine_id`, `code`, `checksum`，完整解析 `updated_by_pk`, `kiosk_pwd_log_no`, `cancellation_name`, `cancellation_name_id`, `cancellation_datetime`。
 2. **全面禁止前端亂數 PIN fallback**：

@@ -1,3 +1,12 @@
+---
+id: mem-shipping-batch-csv-1109-upload-fix
+brand: us3c
+tier: L2_ANTIPATTERN
+status: active
+valid_from: "2026-11-26"
+scope_repos: [us3c-next]
+---
+
 # 出貨單頁面 `1109.csv` 上傳解析卡住 5 分鐘之根因診斷與修復
 
 <PatternExtract>

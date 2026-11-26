@@ -1,7 +1,16 @@
+---
+id: mem-eli5-ponytail-readme-dual-reading
+brand: shared-eng
+tier: L2_DECISION
+status: active
+valid_from: "2026-11-26"
+scope_repos: []
+---
+
 # [Correct-Pattern] `/eli5` × `/ponytail` × `README.md` 人機雙讀持久化工作法
 
 ## 📌 Context
-適用於所有專案（Storeasy 家族、US3C NEXT 家族及未來專案）之：
+適用於所有跨品牌工程專案與未來新專案之：
 1. **更新或撰寫 `README.md`**（人機雙讀標準）
 2. **新功能說明、流程／SOP 教學、線上故障復盤**
 3. **多 Agent 協作交接與 `/ponytail` 精簡後之對人報告**

@@ -1,3 +1,12 @@
+---
+id: mem-turso-hrana-float-not-double
+brand: storeasy
+tier: L2_ANTIPATTERN
+status: active
+valid_from: "2026-09-11"
+scope_repos: [STOREASY_IT, Storeasyworkdivnew, StoreasyFinHR, StoreasyFMnew]
+---
+
 # Turso Hrana HTTP v2：float 不是 double
 
 - **日期**：2026-09-11

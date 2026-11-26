@@ -1,3 +1,12 @@
+---
+id: mem-us3c-store-locations-supabase-ssot
+brand: us3c
+tier: L2_CONTRACT
+status: active
+valid_from: "2026-11-18"
+scope_repos: [us3c-next, us3cwebsite-env]
+---
+
 # [Correct-Pattern] US3C 直營分店資訊 SSOT：Live Supabase × 專案程式碼
 
 ## 📌 Context
@@ -5,7 +14,7 @@
 - 確立日：2026-11-18
 - 適用專案：`us3cwebsite-env`（`us3c-next-poc`）
 - 唯一真相來源（Only Source of Truth）：
-  1. **Live Supabase**：專案 `bhelujvcoqnpygelhtym` 資料表 `published_kiosk_snapshot`（`payload->>kind` 為 `null` 之最新一筆 `payload.stores`）提供即時門市營運欄位（`storeCode`、`name`、`address`、`note`、`phone`、`hoursByDay`、`status`、`lineId`、`googleMapUrl`、`youtubeUrl`、`metro`、`parking`）。
+  1. **Live Supabase**：專案 `<SUPABASE_PROJECT_REF>` 資料表 `published_kiosk_snapshot`（`payload->>kind` 為 `null` 之最新一筆 `payload.stores`）提供即時門市營運欄位（`storeCode`、`name`、`address`、`note`、`phone`、`hoursByDay`、`status`、`lineId`、`googleMapUrl`、`youtubeUrl`、`metro`、`parking`）。
   2. **專案程式碼**：[`us3c-next-poc/src/data/locations.ts`](file:///c:/Users/Jiaxing/Documents/GitHub/us3cwebsite-env/us3c-next-poc/src/data/locations.ts) 保存站點結構性權威欄位（`id`、SEO Canonical `slug`、`lat`/`lng` 防呆基準、`features`、`serviceAreas`、`heroImage`／`galleryImages`、`STORE_LINE_URL_BY_ID` 權威短鏈對照表）。
 
 ---

@@ -28,7 +28,7 @@ alwaysApply: true
 
 對齊 **`Carbon 唯讀定計 ⇄ Hydrogen 執行測試 ⇄ Grok/Decision/Qwen 門禁`**，依階段動態交接，不鎖死單一模型，並恪守調度三鐵律（Plan & 子代理額度優先 → 官方直連 API → OpenRouter）：
 
-- **Phase 0 (`🛡️ Agent 0` 邊界守門)**：**`deepseek-flash`**（亞秒檢查 `boundary-sentinel.md`、工作區邊界與 Storeasy 6 Repo 白名單）
+- **Phase 0 (`🛡️ Agent 0` 邊界守門)**：**`deepseek-flash`**（亞秒檢查 `boundary-sentinel.md`、工作區邊界與 Storeasy 7 聯動 Repo 白名單）
 - **Phase A (`🧠 Agent Planner` 唯讀定計與重規劃)**：**`gemini-4-carbon`**（唯讀探索依賴與 `graphify`，建立附 **Re-plan Triggers** 的計畫；遇阻接手修補）
 - **Phase B (`😈 Agent B` 紅隊 ＋ `⚖️ Decision` 裁決)**：**`grok-4.7`**（Cursor Plan 紅隊批判；額度不足備案 **`qwen4-max-preview`**）＋ **Gemini Decision API** / `jev-1.13.0`（極簡 JSON 燈號裁決）
 - **Phase C (`🛠️ Agent Executor` 執行與測試)**：**`gemini-4-hydrogen`**（改碼、跑測試與視覺 E2E；觸發 Re-plan Trigger 交回 `Carbon`；額度不足或跨檔硬骨頭備案 **`qwen4-max-preview`**）

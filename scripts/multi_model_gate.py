@@ -193,6 +193,9 @@ def _parse_agy_json_output(stdout: str) -> dict[str, Any]:
     return {}
 
 
+AGY_CLI_PROMPT_CAP = 32000
+
+
 def _call_agy_cli(
     model: str,
     system_prompt: str,
@@ -209,15 +212,12 @@ def _call_agy_cli(
     child_env.pop("GOOGLE_API_KEY", None)
     child_env.pop("GOOGLE_GENERATIVE_AI_API_KEY", None)
 
-    # Windows CreateProcessW 命令列上限為 32,767 字元，壓縮 Diff 避免 WinError 206
-    safe_prompt = _cap_prompt_for_model(prompt, 20000)
     headless_guard = (
         "【HEADLESS 唯讀審查限制】你目前處於無頭純文字會審模式，"
         "嚴禁呼叫任何終端機命令（command）、寫入檔案、或嘗試建立 implementation_plan.md 等外部檔案；"
         "請僅針對下方提供的 Git Diff 統計與內容直接輸出文字審查結論。"
     )
     sys_block = f"{headless_guard}\n\n{system_prompt}".strip() if system_prompt.strip() else headless_guard
-    full_prompt = f"{sys_block}\n\n---\n\n{safe_prompt}"
     cmd = [
         str(resolve_agy_cli_path()),
         "--mode",
@@ -229,6 +229,13 @@ def _call_agy_cli(
     ]
     if json_schema is not None:
         cmd.extend(["--json-schema", json.dumps(json_schema, ensure_ascii=False)])
+    effective_cap = AGY_CLI_PROMPT_CAP
+    if os.name == "nt":
+        # Windows CreateProcessW 命令列總長上限為 32,767 字元，扣除前置參數與 sys_block 防 WinError 206
+        overhead = sum(len(a) + 3 for a in cmd) + len(sys_block) + 32
+        effective_cap = min(AGY_CLI_PROMPT_CAP, max(20000, 32400 - overhead))
+    safe_prompt = _cap_prompt_for_model(prompt, effective_cap)
+    full_prompt = f"{sys_block}\n\n---\n\n{safe_prompt}"
     # 嚴禁傳入 --disable-slash-commands，否則 agy.exe 的 --mode plan 會失效
     cmd.extend(["-p", full_prompt])
 
@@ -1512,6 +1519,7 @@ def plan_role_skill_matrix(
     *,
     changed_files: list[str] | None = None,
     diff_text: str = "",
+    required_tier: str = "",
 ) -> dict[str, Any]:
     """依 Phase 動態啟動並釋放最適合之 Model × Skills × 元件（同時維持角色綁定矩陣向後相容）。"""
     merged_files = list(changed_files or [])
@@ -1616,6 +1624,14 @@ def plan_role_skill_matrix(
                 combined.append(s_name)
 
         # 2) 按需情境保護（只在相應階段啟動，交棒即釋放）
+        if str(required_tier).upper() == "T3" and phase_code in {"B", "C2", "D", "DECISION"}:
+            for t3_skill in ("stage-gate-review", "verification-quality"):
+                if (
+                    (not skill_map or t3_skill in skill_map)
+                    and t3_skill not in combined
+                    and len(combined) < MAX_SKILLS_PER_ROLE
+                ):
+                    combined.append(t3_skill)
         if phase_code in {"0", "B"} and not is_docs_only:
             sec_anchor = "bughunter" if (has_security_surface or explicit_security_q or has_spreadsheet_signal) else ""
             if sec_anchor and (not skill_map or sec_anchor in skill_map) and sec_anchor not in combined and len(combined) < MAX_SKILLS_PER_ROLE:
@@ -1853,7 +1869,8 @@ def compute_skill_attribution(results: list[dict[str, Any]], skill_plan: dict[st
     """分析各異質模型實際回覆中對已掛載 Skills 與 Claude-BugHunter 要點的引用與覆蓋歸因。"""
     skill_signal_hints: dict[str, tuple[str, ...]] = {
         "ponytail": ("精簡", "不必要", "重複", "wrapper", "最小變更", "ponytail"),
-        "ponytail-review": ("精簡", "死碼", "cuttable", "重複", "簡化", "ponytail"),
+        "ponytail-review": ("精簡", "死碼", "cuttable", "重複", "簡化", "wrapper", "最小變更", "ponytail"),
+        "fastapi-templates": ("fastapi", "端點", "router", "依賴注入", "契約", "pydantic"),
         "security-audit": ("注入", "驗簽", "權限", "漏洞", "sql", "csrf", "xss", "hmac", "security"),
         "bughunter": ("漏洞", "bypass", "越權", "hunt-", "sql", "注入", "邊界", "bughunter"),
         "us3c-tradein-margin-pricing": ("計價", "毛利", "定價", "上限", "下限", "0.2", "扣款", "報價"),
@@ -2103,7 +2120,7 @@ def _call_gemini_decision(
                 "spec_shrink": spec_shrink,
                 "reason": reason,
             }
-            dec_cap = 20000 if att["provider"] == "agy_decision_oauth" else JEV_STATE_CHAR_CAP
+            dec_cap = AGY_CLI_PROMPT_CAP if att["provider"] == "agy_decision_oauth" else JEV_STATE_CHAR_CAP
             attempt_results.append({"provider": att["provider"], "model": att["model"], "status": "ok", "request_id": req_id})
             return {
                 "role": role,
@@ -2185,7 +2202,7 @@ def call_model(ep: dict[str, Any], prompt: str, plan: dict[str, Any] | None = No
     scoped_prompt = _cap_prompt_for_model(prompt)
 
     def _trunc_meta(provider_name: str) -> dict[str, Any]:
-        provider_cap = 20000 if provider_name == "agy_cli_oauth" else (25000 if provider_name == "grok_cli_oauth" else CHAT_PROMPT_CHAR_CAP)
+        provider_cap = AGY_CLI_PROMPT_CAP if provider_name == "agy_cli_oauth" else (25000 if provider_name == "grok_cli_oauth" else CHAT_PROMPT_CHAR_CAP)
         effective_cap = min(CHAT_PROMPT_CHAR_CAP, provider_cap) if CHAT_PROMPT_CHAR_CAP > 0 else provider_cap
         is_truncated = effective_cap > 0 and len(prompt) > effective_cap
         return {
@@ -2367,15 +2384,85 @@ def call_model(ep: dict[str, Any], prompt: str, plan: dict[str, Any] | None = No
     }
 
 
+def _load_tier_gate_module() -> Any | None:
+    """安全動態載入同目錄 tier_gate.py；找不到或異常時回傳 None 不崩潰。"""
+    tier_path = SCRIPT_DIR / "tier_gate.py"
+    if not tier_path.is_file():
+        return None
+    try:
+        import importlib.util
+
+        mod_name = "tier_gate"
+        module = sys.modules.get(mod_name)
+        mod_file = getattr(module, "__file__", None) if module is not None else None
+        if module is None or not mod_file or Path(mod_file).resolve() != tier_path.resolve():
+            spec = importlib.util.spec_from_file_location(mod_name, str(tier_path))
+            if spec is None or spec.loader is None:
+                return None
+            module = importlib.util.module_from_spec(spec)
+            sys.modules[mod_name] = module
+            try:
+                spec.loader.exec_module(module)
+            except Exception:
+                sys.modules.pop(mod_name, None)
+                return None
+        return module
+    except Exception:
+        # 找不到或載入失敗時優雅降級，不阻斷 multi_model_gate 執行
+        return None
+
+
+def _is_sensitive_untracked_path(raw_path: str) -> bool:
+    p = raw_path.strip().strip('"').replace("\\", "/").lower()
+    parts = p.split("/")
+    if any(seg in (".venv", "venv", "__pycache__", ".pytest_cache", "node_modules", ".git") for seg in parts):
+        return True
+    name = parts[-1] if parts else p
+    return (
+        name == ".env"
+        or name.startswith(".env.")
+        or "service_account" in p
+        or "secret" in p
+        or name.endswith((".pem", ".key", ".dpapi.xml", ".tsbuildinfo"))
+    )
+
+
+def _build_virtual_diff_for_file(file_path: Path, rel_display: str, max_chars: int = AGY_CLI_PROMPT_CAP) -> str:
+    """將未追蹤新檔或 --files 檔案轉為標準 unified diff（--- /dev/null）供會審使用。"""
+    try:
+        raw_bytes = file_path.read_bytes()
+    except OSError:
+        return ""
+    if b"\x00" in raw_bytes[:8192]:
+        return ""
+    text = raw_bytes.decode("utf-8", errors="replace")
+    truncated_note = ""
+    if max_chars > 0 and len(text) > max_chars:
+        text = text[:max_chars]
+        truncated_note = "\n+... [file content truncated for review]"
+    lines = text.splitlines()
+    rel_norm = rel_display.replace("\\", "/")
+    body = "\n".join(f"+{ln}" for ln in lines) + truncated_note
+    return (
+        f"diff --git a/{rel_norm} b/{rel_norm}\n"
+        f"new file mode 100644\n"
+        f"--- /dev/null\n"
+        f"+++ b/{rel_norm}\n"
+        f"@@ -0,0 +1,{len(lines)} @@\n"
+        f"{body}\n"
+    )
+
+
 def _run_deterministic_rule_lint(
     diff_out: str,
     repo_root: Path | None = None,
     skip: bool = False,
+    explicit_files: list[str] | None = None,
 ) -> dict[str, Any]:
-    """動態載入同目錄 rule_lint.py（若存在）檢查 Git Diff，維持 JSON 相容性。"""
+    """動態載入同目錄 rule_lint.py（若存在）檢查 Git Diff 或指定檔案，維持 JSON 相容性。"""
     if skip:
         return {"skipped": True, "reason": "skipped_by_flag"}
-    if not diff_out.strip():
+    if not diff_out.strip() and not explicit_files:
         return {"skipped": True, "reason": "no_git_diff"}
     rule_lint_path = SCRIPT_DIR / "rule_lint.py"
     if not rule_lint_path.is_file():
@@ -2398,6 +2485,27 @@ def _run_deterministic_rule_lint(
             except Exception:
                 sys.modules.pop(mod_name, None)
                 raise
+        if explicit_files:
+            lint_content_fn = getattr(module, "lint_file_content", None)
+            if callable(lint_content_fn):
+                violations: list[dict[str, Any]] = []
+                checked = 0
+                for raw_f in explicit_files:
+                    fp = Path(raw_f)
+                    if not fp.is_file():
+                        continue
+                    checked += 1
+                    content = fp.read_text(encoding="utf-8", errors="replace")
+                    violations.extend(lint_content_fn(str(fp), content, added_lines=None))
+                err_cnt = sum(1 for v in violations if v.get("severity") == "error")
+                warn_cnt = sum(1 for v in violations if v.get("severity") == "warning")
+                return {
+                    "passed": err_cnt == 0,
+                    "files_checked": checked,
+                    "error_count": err_cnt,
+                    "warning_count": warn_cnt,
+                    "violations": violations,
+                }
         lint_fn = getattr(module, "lint_git_diff", None)
         if not callable(lint_fn):
             return {"skipped": True, "reason": "lint_git_diff_missing"}
@@ -2411,6 +2519,32 @@ def _run_deterministic_rule_lint(
             "error": f"{type(exc).__name__}: {exc}",
             "violations": [],
         }
+
+
+DEFAULT_FAKE_REQ_IDS = frozenset(
+    {"", "cursor-plan-delegated", "unknown", "none", "null", "n/a", "delegated"}
+)
+
+
+def _normalize_changed_file(raw: str, *, allow_existing_abs: bool = False) -> str | None:
+    """正規化變更路徑；預設僅允許 repo 內相對路徑，顯式 --files 允許已存在且無穿越/非密鑰之絕對路徑。"""
+    s = str(raw).strip().strip('"')
+    if not s:
+        return None
+    norm_slash = s.replace("\\", "/")
+    if norm_slash.startswith("/") or re.match(r"^[a-zA-Z]:", norm_slash):
+        if not allow_existing_abs:
+            return None
+        p = Path(s)
+        if any(part == ".." for part in p.parts) or _is_sensitive_untracked_path(s):
+            return None
+        try:
+            if not p.is_file():
+                return None
+            return p.resolve().as_posix().lower()
+        except OSError:
+            return None
+    return _normalize_rel_path(raw)
 
 
 def _normalize_rel_path(raw: str) -> str | None:
@@ -2458,12 +2592,31 @@ def _is_red_team_result(r: dict[str, Any]) -> bool:
     )
 
 
+def _is_transient_red_team_failure(r: dict[str, Any]) -> bool:
+    """判定紅隊失敗是否屬於外部服務瞬斷（402/429/5xx/timeout/OAuth 過期/網路錯誤）。"""
+    status = str(r.get("status") or "").lower()
+    if status == "timeout":
+        return True
+    http_code = r.get("http_code")
+    if isinstance(http_code, int) and (http_code in (401, 402, 403, 408, 429) or 500 <= http_code <= 599):
+        return True
+    err = str(r.get("error") or "").lower()
+    transient_hints = (
+        "timeout", "402", "429", "500", "502", "503", "504",
+        "oauth", "not logged in", "expired", "quota", "rate limit",
+        "connection", "urlerror", "ssl", "temporarily", "unavailable",
+        "grok cli failed", "overloaded",
+    )
+    return status in ("http_error", "error") and any(h in err for h in transient_hints)
+
+
 def compute_local_gate_score(
     prompt: str,
     results: list[dict[str, Any]],
     *,
     raw_user_prompt: str = "",
     changed_files: list[str] | None = None,
+    explicit_files: list[str] | None = None,
     industry_family: str = "",
 ) -> dict[str, Any]:
     """結合結構裁決引擎與異質散文嚴格去重投票；封鎖無燈號、路徑穿越、半數截斷、紅隊否決與單一引擎放行。"""
@@ -2480,7 +2633,11 @@ def compute_local_gate_score(
         "scripts/skill_eval_dataset.json",
     }
     raw_files = [str(f) for f in (changed_files or []) if str(f).strip()]
-    norm_files = [_normalize_rel_path(f) for f in raw_files]
+    explicit_set = {str(f).strip() for f in (explicit_files or []) if str(f).strip()}
+    norm_files = [
+        _normalize_changed_file(f, allow_existing_abs=(f.strip() in explicit_set))
+        for f in raw_files
+    ]
     # 僅跳過上述 4 支工具元檔、決策 Markdown 與 .agent/*.md 的 diff 字面值掃描防自我誤報；
     # 非 .md 檔與其他路徑一律納入 diff 掃描，絕不免除實質審查。
     is_meta_only = bool(norm_files) and all(
@@ -2548,14 +2705,45 @@ def compute_local_gate_score(
     truncated_roles = [str(r.get("role")) for r in ok_executed if r.get("prompt_truncated")]
 
     red_team_present = any(_is_red_team_result(r) for r in results)
-    red_team_failed = any(
-        _is_red_team_result(r) and r.get("status") not in ("ok", "delegated_to_ide")
-        for r in results
-    )
+    failed_red_team_results = [
+        r for r in results
+        if _is_red_team_result(r) and r.get("status") not in ("ok", "delegated_to_ide")
+    ]
+    red_team_failed = bool(failed_red_team_results)
     red_team_vetoed = any(
         _is_red_team_result(r) and _extract_prose_vote(str(r.get("review", "")), allow_tail_red=True) == "red"
         for r in prose_results
     )
+
+    # 異質紅隊降級協議：若紅隊僅因外部服務瞬斷失敗，且零紅燈 + >=2 異質供應商 + 有異質模型接手，降級為 PASS_DEGRADED
+    red_team_transient_only = red_team_failed and all(
+        _is_transient_red_team_failure(r) for r in failed_red_team_results
+    )
+    substitute_candidates = [
+        r for r in prose_results
+        if not _is_red_team_result(r)
+        and _extract_prose_vote(str(r.get("review", ""))) in ("green", "yellow")
+    ]
+    hetero_sub = next(
+        (r for r in substitute_candidates if str(r.get("provider") or "").lower() not in ("agy_cli_oauth", "gemini_direct")),
+        substitute_candidates[0] if substitute_candidates else None,
+    )
+    can_degrade_red_team = (
+        red_team_transient_only
+        and red_flags == 0
+        and not red_team_vetoed
+        and len(unique_prose_providers) >= 2
+        and hetero_sub is not None
+    )
+    degraded_reason: str | None = None
+    red_team_substitute: str | None = None
+    if can_degrade_red_team and hetero_sub is not None:
+        err_note = "; ".join(
+            f"{r.get('http_code') or r.get('status')}:{str(r.get('error') or '')[:60]}"
+            for r in failed_red_team_results
+        )
+        degraded_reason = f"red_team_transient_failure({err_note})"
+        red_team_substitute = f"{hetero_sub.get('role')} [{hetero_sub.get('provider')}:{hetero_sub.get('responded_model')}]"
 
     block_reasons: list[str] = []
     warn_statuses: list[str] = []
@@ -2563,12 +2751,20 @@ def compute_local_gate_score(
         block_reasons.append("unsafe_changed_file_path")
     if valid_votes and (red_flags >= 2 or (red_flags * 2 >= len(valid_votes))):
         block_reasons.append("heterogeneous_red_majority")
+    elif red_flags > 0:
+        block_reasons.append("heterogeneous_red_flag")
     if red_team_vetoed:
         block_reasons.append("red_team_veto")
     if red_team_failed:
-        block_reasons.append("red_team_incomplete_or_timeout")
-        warn_statuses.append("WARN_INCOMPLETE")
-    if (len(executed_results) < 2) or (ok_count < max(2, len(executed_results) - 1)):
+        if can_degrade_red_team:
+            warn_statuses.append("WARN_DEGRADED_REDTEAM")
+        else:
+            block_reasons.append("red_team_incomplete_or_timeout")
+            warn_statuses.append("WARN_INCOMPLETE")
+    min_ok_required = max(2, len(executed_results) - 1)
+    if can_degrade_red_team:
+        min_ok_required = max(2, len(executed_results) - len(failed_red_team_results) - 1)
+    if (len(executed_results) < 2) or (ok_count < min_ok_required):
         block_reasons.append("insufficient_models_succeeded")
         warn_statuses.append("WARN_INCOMPLETE")
     if not valid_votes:
@@ -2580,9 +2776,11 @@ def compute_local_gate_score(
     if len(valid_votes) >= 2 and len(unique_prose_providers) < 2:
         block_reasons.append("insufficient_prose_diversity")
         warn_statuses.append("WARN_INCOMPLETE")
-    if ok_executed and (len(truncated_roles) * 2 >= len(ok_executed)):
+    if ok_executed and (len(truncated_roles) * 2 > len(ok_executed)):
         block_reasons.append("majority_diff_truncated")
         warn_statuses.append("WARN_TRUNCATED")
+    elif truncated_roles:
+        warn_statuses.append("WARN_PARTIAL_TRUNCATED")
     if not red_team_present:
         warn_statuses.append("WARN_RED_TEAM_ABSENT")
 
@@ -2591,19 +2789,23 @@ def compute_local_gate_score(
         score = float(base.get("calibrated_score", 0.0))
         if block_reasons:
             verdict = "BLOCK"
-            cap = 0.35 if any(r in block_reasons for r in ("heterogeneous_red_majority", "red_team_veto")) else 0.4
+            cap = 0.35 if any(r in block_reasons for r in ("heterogeneous_red_majority", "heterogeneous_red_flag", "red_team_veto")) else 0.4
             score = round(min(score, cap), 3)
             base["block_reason"] = block_reasons[0]
             base["block_reasons"] = block_reasons
         elif verdict == "BLOCK" and not base.get("block_reason"):
             base["block_reason"] = fallback_block_reason
             base["block_reasons"] = [fallback_block_reason]
+        elif verdict == "PASS" and degraded_reason:
+            verdict = "PASS_DEGRADED"
         if warn_statuses:
             uniq_warns = list(dict.fromkeys(warn_statuses))
             base["warn_status"] = uniq_warns[0]
             base["warn_statuses"] = uniq_warns
         base["calibrated_score"] = score
         base["gate_verdict"] = verdict
+        base["degraded_reason"] = degraded_reason
+        base["red_team_substitute"] = red_team_substitute
         base["base_decision_verdict"] = base_verdict
         base["models_succeeded"] = f"{ok_count}/{len(executed_results)}"
         base["prose_signals"] = {"green": green_flags, "yellow": yellow_flags, "red": red_flags}
@@ -2658,7 +2860,15 @@ def compute_local_gate_score(
     score = max(0.0, min(1.0, round(score, 3)))
     base_verdict = (
         "PASS"
-        if (len(executed_results) >= 4 and ok_count == len(executed_results) and len(valid_votes) >= 2 and red_flags == 0 and score >= 0.75)
+        if (
+            (
+                (len(executed_results) >= 4 and ok_count == len(executed_results))
+                or (can_degrade_red_team and len(unique_prose_providers) >= 2)
+            )
+            and len(valid_votes) >= 2
+            and red_flags == 0
+            and score >= 0.75
+        )
         else "BLOCK"
     )
     return _finalize_summary({
@@ -2694,6 +2904,8 @@ def main():
     p_rev.add_argument("--git-diff", action="store_true", help="Append complete tracked changes against HEAD; empty diffs fail")
     p_rev.add_argument("--commit", type=str, default="", help="Specific commit ref to diff (e.g., 186ea7a)")
     p_rev.add_argument("--paths", nargs="*", default=[], help="Optional git pathspecs to scope --git-diff / --commit")
+    p_rev.add_argument("--files", nargs="+", default=[], help="Direct file paths to review as virtual diff (supports non-Git dirs)")
+    p_rev.add_argument("--pass-file", type=str, default="", help="Custom path to write lean_triad_gate_pass.json receipt")
     p_rev.add_argument("--output", type=str, default="", help="Write JSON result to file")
     p_rev.add_argument("--include-grok-api", action="store_true", help="Also invoke external Grok (grok.exe OAuth first, then XAI_API_KEY) instead of Cursor Plan")
     p_rev.add_argument("--force-gemini-api", action="store_true", help="Bypass Antigravity Plan (agy.exe) and use GEMINI_API_KEY directly")
@@ -2845,6 +3057,11 @@ def main():
         diff_out = ""
         diff_stat = ""
         untracked_text = ""
+        explicit_files = [str(p).strip() for p in (getattr(args, "files", None) or []) if str(p).strip()]
+        tier_mod = _load_tier_gate_module()
+        tier_assessment: dict[str, Any] | None = None
+        effective_base: str | None = None
+
         if args.git_diff or args.commit:
             pathspecs = [str(p).strip() for p in (getattr(args, "paths", None) or []) if str(p).strip()]
             if any(p.startswith(":") for p in pathspecs):
@@ -2852,45 +3069,61 @@ def main():
                 raise SystemExit(2)
             target_specs = pathspecs or [":/"]
             exclude_specs = [":(exclude)*.tsbuildinfo"]
+            controlled_specs: list[str] = []
+            if tier_mod is not None and callable(getattr(tier_mod, "assess_tier", None)):
+                try:
+                    t_kwargs: dict[str, Any] = {"repo_root": Path.cwd(), "git_diff": True}
+                    if args.commit:
+                        t_kwargs["base"] = f"{args.commit}~1..{args.commit}"
+                    tier_res = tier_mod.assess_tier(**t_kwargs)
+                    if isinstance(tier_res, dict):
+                        tier_assessment = tier_res
+                        if not pathspecs and tier_res.get("controlled_files"):
+                            controlled_specs = [str(f) for f in tier_res["controlled_files"] if str(f).strip()]
+                except Exception:
+                    # tier_gate 評估失敗時優雅退回完整 git diff
+                    pass
+            effective_specs = controlled_specs or target_specs
             try:
                 if args.commit:
-                    cmd = ["git", "show", "--format=", args.commit, "--", *target_specs, *exclude_specs]
+                    effective_base = f"{args.commit}~1..{args.commit}"
+                    cmd = ["git", "show", "--format=", args.commit, "--", *effective_specs, *exclude_specs]
                     diff_out = subprocess.check_output(cmd, text=True, encoding="utf-8", errors="ignore")
-                    stat_cmd = ["git", "show", "--stat", "--format=", args.commit, "--", *target_specs, *exclude_specs]
+                    stat_cmd = ["git", "show", "--stat", "--format=", args.commit, "--", *effective_specs, *exclude_specs]
                     diff_stat = subprocess.check_output(stat_cmd, text=True, encoding="utf-8", errors="ignore").strip()
                 else:
-                    cmd = ["git", "diff", "HEAD", "--", *target_specs, *exclude_specs]
+                    raw_eff_base = str((tier_assessment or {}).get("effective_base") or "HEAD").strip()
+                    effective_base = raw_eff_base if (raw_eff_base and not raw_eff_base.startswith("-")) else "HEAD"
+                    cmd = ["git", "diff", effective_base, "--", *effective_specs, *exclude_specs]
                     diff_out = subprocess.check_output(cmd, text=True, encoding="utf-8", errors="ignore")
-                    stat_cmd = ["git", "diff", "--stat", "HEAD", "--", *target_specs, *exclude_specs]
+                    stat_cmd = ["git", "diff", "--stat", effective_base, "--", *effective_specs, *exclude_specs]
                     diff_stat = subprocess.check_output(stat_cmd, text=True, encoding="utf-8", errors="ignore").strip()
-                    st_cmd = ["git", "status", "--short", "--untracked-files=normal"]
+                    ls_cmd = ["git", "-c", "core.quotepath=false", "ls-files", "--others", "--exclude-standard"]
                     if pathspecs:
-                        st_cmd.extend(["--", *pathspecs])
-                    st_out = subprocess.check_output(st_cmd, text=True, encoding="utf-8", errors="ignore")
-
-                    def _skip_untracked(line: str) -> bool:
-                        p = line[3:].strip().strip('"').replace("\\", "/").lower()
-                        parts = p.split("/")
-                        if any(seg in (".venv", "venv", "__pycache__", ".pytest_cache", "node_modules") for seg in parts):
-                            return True
-                        name = parts[-1] if parts else p
-                        return (
-                            name == ".env"
-                            or name.startswith(".env.")
-                            or "service_account" in p
-                            or "secret" in p
-                            or name.endswith((".pem", ".key", ".dpapi.xml"))
-                        )
-
-                    untracked_lines = [
-                        ln.strip()
-                        for ln in st_out.splitlines()
-                        if ln.startswith("?? ") and not _skip_untracked(ln)
+                        ls_cmd.extend(["--", *pathspecs])
+                    ls_out = subprocess.check_output(ls_cmd, text=True, encoding="utf-8", errors="ignore")
+                    controlled_set = {c.replace("\\", "/") for c in controlled_specs}
+                    untracked_files = [
+                        ln.strip().replace("\\", "/")
+                        for ln in ls_out.splitlines()
+                        if ln.strip() and not _is_sensitive_untracked_path(ln)
                     ]
-                    if untracked_lines:
-                        untracked_text = "\n".join(untracked_lines[:20])
-                        if len(untracked_lines) > 20:
-                            untracked_text += f"\n…(另有 {len(untracked_lines) - 20} 個未追蹤檔未列出)"
+                    if controlled_set:
+                        scoped_untracked = [u for u in untracked_files if u in controlled_set]
+                        if scoped_untracked or diff_out.strip():
+                            untracked_files = scoped_untracked
+                    if untracked_files:
+                        untracked_text = "\n".join(f"?? {u}" for u in untracked_files[:20])
+                        if len(untracked_files) > 20:
+                            untracked_text += f"\n…(另有 {len(untracked_files) - 20} 個未追蹤檔未列出)"
+                        vdiffs = [
+                            _build_virtual_diff_for_file(Path.cwd() / u, u)
+                            for u in untracked_files
+                            if (Path.cwd() / u).is_file()
+                        ]
+                        vdiff_blob = "\n".join(vd for vd in vdiffs if vd)
+                        if vdiff_blob:
+                            diff_out = (diff_out.rstrip() + "\n" + vdiff_blob).strip() + "\n"
                 if diff_out.strip():
                     overview_parts = []
                     if diff_stat:
@@ -2901,15 +3134,41 @@ def main():
                         )
                         overview_parts.append("【Git Diff 統計總覽 (--stat)】:\n" + diff_stat_block)
                     if untracked_text:
-                        overview_parts.append("【未追蹤檔案清單（未含於下方 Diff）】:\n" + untracked_text)
+                        overview_parts.append("【已併入虛擬 Diff 之未追蹤新檔】:\n" + untracked_text)
                     overview_block = ("\n\n" + "\n\n".join(overview_parts)) if overview_parts else ""
-                    prompt_text += overview_block + "\n\n【真實 Git Diff】（未含未追蹤檔案）:\n```diff\n" + diff_out + "\n```"
-                else:
-                    print(json.dumps({"error": "Git 差異為空，未送出會審；未追蹤檔案需另行提供"}, ensure_ascii=False))
+                    prompt_text += overview_block + "\n\n【真實 Git Diff】:\n```diff\n" + diff_out + "\n```"
+                elif not explicit_files:
+                    print(json.dumps({"error": "Git 差異為空（含未追蹤生產檔），未送出會審"}, ensure_ascii=False))
                     raise SystemExit(1)
             except (OSError, subprocess.CalledProcessError) as exc:
                 print(json.dumps({"error": "無法讀取 Git 差異，未送出會審", "error_type": type(exc).__name__}, ensure_ascii=False))
                 raise SystemExit(1) from exc
+
+        if explicit_files:
+            vdiffs_files: list[str] = []
+            for raw_f in explicit_files:
+                fp = Path(raw_f)
+                if not fp.is_file():
+                    print(json.dumps({"error": "檔案不存在", "path": raw_f}, ensure_ascii=False))
+                    raise SystemExit(2)
+                if _is_sensitive_untracked_path(raw_f):
+                    continue
+                vd = _build_virtual_diff_for_file(fp, fp.name if fp.is_absolute() else raw_f)
+                if vd:
+                    vdiffs_files.append(vd)
+            if vdiffs_files:
+                files_diff_blob = "\n".join(vdiffs_files)
+                diff_out = (diff_out.rstrip() + "\n" + files_diff_blob).strip() + "\n"
+                prompt_text += "\n\n【指定檔案虛擬 Diff (--files)】:\n```diff\n" + files_diff_blob + "\n```"
+            if tier_assessment is None and tier_mod is not None and callable(getattr(tier_mod, "assess_tier", None)):
+                try:
+                    tier_res = tier_mod.assess_tier(git_diff=False, files=explicit_files)
+                    if isinstance(tier_res, dict):
+                        tier_assessment = tier_res
+                except Exception:
+                    # 非 Git 目錄 tier_gate 失敗時略過不阻斷會審
+                    pass
+
         if not prompt_text:
             print(json.dumps({"error": "Empty prompt"}, ensure_ascii=False))
             return
@@ -2919,13 +3178,19 @@ def main():
             diff_out=diff_out,
             repo_root=Path.cwd(),
             skip=skip_rule_lint,
+            explicit_files=explicit_files or None,
         )
 
         review_files = [str(p).strip() for p in (getattr(args, "paths", None) or []) if str(p).strip()]
+        for ef in explicit_files:
+            if ef not in review_files:
+                review_files.append(ef)
+        required_tier_str = str((tier_assessment or {}).get("required_tier") or "")
         skill_plan = plan_role_skill_matrix(
             raw_user_prompt,
             changed_files=review_files or None,
             diff_text=diff_out,
+            required_tier=required_tier_str,
         )
         results = []
         with concurrent.futures.ThreadPoolExecutor(max_workers=max(1, len(endpoints))) as ex:
@@ -2938,6 +3203,7 @@ def main():
             results,
             raw_user_prompt=raw_user_prompt,
             changed_files=skill_plan["changed_files"],
+            explicit_files=explicit_files or None,
             industry_family=skill_plan["industry_family"],
         )
         skill_attribution = compute_skill_attribution(results, skill_plan)
@@ -2951,9 +3217,83 @@ def main():
             local_summary["rule_lint_failed"] = True
             local_summary["rule_lint_violations"] = deterministic_lint.get("violations", [])
 
+        # 自動寫出 JSON 憑證（PASS / PASS_DEGRADED 且至少 1 筆真實外部 request_id）
+        fake_req_ids = {
+            str(x).strip().lower()
+            for x in (getattr(tier_mod, "FAKE_REQ_IDS", None) or DEFAULT_FAKE_REQ_IDS)
+        }
+        real_request_ids: list[str] = []
+        for r in results:
+            if r.get("status") != "ok":
+                continue
+            rid = str(r.get("request_id") or "").strip()
+            if rid and rid.lower() not in fake_req_ids and rid not in real_request_ids:
+                real_request_ids.append(rid)
+
+        pass_receipt: dict[str, Any] | None = None
+        pass_file_written: str | None = None
+        gate_stamp: str | None = None
+        final_verdict = str(local_summary.get("gate_verdict") or "")
+        if final_verdict in ("PASS", "PASS_DEGRADED") and real_request_ids:
+            custom_pass_file = (getattr(args, "pass_file", "") or "").strip()
+            if custom_pass_file:
+                pass_path = Path(custom_pass_file)
+            elif tier_assessment and tier_assessment.get("default_pass_file"):
+                pass_path = Path(str(tier_assessment["default_pass_file"]))
+            else:
+                common_dir: Path | None = None
+                if tier_mod is not None and callable(getattr(tier_mod, "resolve_git_common_dir", None)):
+                    try:
+                        common_dir = tier_mod.resolve_git_common_dir(Path.cwd())
+                    except Exception:
+                        common_dir = None
+                pass_path = (common_dir / "lean_triad_gate_pass.json") if common_dir else (Path.cwd() / "lean_triad_gate_pass.json")
+            covered_head: str | None = None
+            try:
+                wt_status = subprocess.check_output(
+                    ["git", "status", "--porcelain"], text=True, encoding="utf-8", errors="ignore", stderr=subprocess.DEVNULL
+                ).strip()
+                if not wt_status:
+                    head_out = subprocess.check_output(
+                        ["git", "rev-parse", "HEAD"], text=True, encoding="utf-8", errors="ignore", stderr=subprocess.DEVNULL
+                    ).strip()
+                    if head_out:
+                        covered_head = head_out
+            except (OSError, subprocess.CalledProcessError):
+                covered_head = None
+            t_info = tier_assessment or {}
+            tier_tok = str(t_info.get("tier_token") or required_tier_str or "T0")
+            pass_receipt = {
+                "version": 1,
+                "prod_diff_fingerprint": str(t_info.get("prod_diff_fingerprint") or ""),
+                "required_tier": str(t_info.get("required_tier") or "T0"),
+                "tier_token": tier_tok,
+                "verdict": final_verdict,
+                "degraded_reason": local_summary.get("degraded_reason"),
+                "red_team_substitute": local_summary.get("red_team_substitute"),
+                "calibrated_score": local_summary.get("calibrated_score", 0.0),
+                "request_ids": real_request_ids,
+                "base_ref": effective_base,
+                "covered_head": covered_head,
+                "test_integrity_snapshot": t_info.get("test_integrity_snapshot") or {},
+                "timestamp": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
+            }
+            try:
+                pass_path.parent.mkdir(parents=True, exist_ok=True)
+                pass_path.write_text(json.dumps(pass_receipt, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+                pass_file_written = str(pass_path)
+            except OSError as exc:
+                print(f"[multi_model_gate] failed to write pass receipt: {exc}", file=sys.stderr)
+            req_preview = ",".join(real_request_ids[:3])
+            gate_stamp = (
+                f"{tier_tok} | gate:{final_verdict}({pass_receipt['calibrated_score']}, req={req_preview})"
+                + (f" | pass:{pass_path.name}" if pass_file_written else "")
+            )
+
         out_data = {
             "status": "completed",
             "total_models_called": len(results),
+            "tier_assessment": tier_assessment,
             "deterministic_lint": deterministic_lint,
             "skill_binding_plan": {
                 "industry_family": skill_plan["industry_family"],
@@ -2976,6 +3316,9 @@ def main():
             },
             "skill_attribution": skill_attribution,
             "local_calibration": local_summary,
+            "pass_file": pass_file_written,
+            "pass_receipt": pass_receipt,
+            "gate_stamp": gate_stamp,
             "results": results,
         }
         if args.output:
@@ -2987,6 +3330,8 @@ def main():
                 f"verdict={local_summary['gate_verdict']}, domains={skill_plan['detected_task_domains']}, "
                 f"AgentB_skills={agent_b_skills})"
             )
+            if gate_stamp:
+                print(f"gate_stamp: {gate_stamp}")
         else:
             print(json.dumps(out_data, ensure_ascii=False, indent=2))
     else:

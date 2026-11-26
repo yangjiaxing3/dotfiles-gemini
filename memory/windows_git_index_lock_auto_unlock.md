@@ -1,3 +1,12 @@
+---
+id: mem-windows-git-index-lock-auto-unlock
+brand: shared-eng
+tier: L2_ANTIPATTERN
+status: active
+valid_from: "2026-11-26"
+scope_repos: []
+---
+
 # Windows `.git/index.lock` 自動安全解鎖守則
 
 ## `[Anti-Pattern 錯誤模式]`

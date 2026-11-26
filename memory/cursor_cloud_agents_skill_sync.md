@@ -1,3 +1,12 @@
+---
+id: mem-cursor-cloud-agents-skill-sync
+brand: shared-eng
+tier: L2_DECISION
+status: active
+valid_from: "2026-11-26"
+scope_repos: []
+---
+
 # Cursor Cloud Agents 全域 Skills 與 Lean-Triad 同步架構
 
 ## `[Anti-Pattern 錯誤模式]`
@@ -18,4 +27,4 @@
      ```powershell
      python C:\Users\Jiaxing\.gemini\scripts\sync_skills_to_cloud_repos.py
      ```
-   - 自動將 13 個 `.cursor/rules/*.mdc`、跨平台腳本與 158 個通過 Linter 門禁（0 超標、Recall@3 100%）的純淨輕量 Skills 同步至 `Huanxin-3Dimen` 與 Storeasy 聯動家族全部 7 個專案的 `.agents/skills/` 與 `.cursor/skills/`。
+   - 自動將 13 個 `.cursor/rules/*.mdc`、跨平台腳本與 158 個通過 Linter 門禁（0 超標、Recall@3 100%）的純淨輕量 Skills 同步至各聯動專案的 `.agents/skills/` 與 `.cursor/skills/`。

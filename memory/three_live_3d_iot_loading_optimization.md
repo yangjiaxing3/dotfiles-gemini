@@ -1,3 +1,12 @@
+---
+id: mem-three-live-3d-iot-loading-optimization
+brand: storeasy
+tier: L2_ANTIPATTERN
+status: active
+valid_from: "2026-11-26"
+scope_repos: [StoreasyFMnew, STOREASY_IT]
+---
+
 # Three-Live 啟發之 3D / CAD / IoT 前後端極速載入優化模式 (CADCraft × STOREASY_IT × StoreasyFMnew)
 
 > 萃取自 `StoreasyFMnew` 快存櫃 3D 模擬器優化實戰（Commit `31416ad0`, `c6b94d86`, `1d3bd462`, `5313eb74`）。

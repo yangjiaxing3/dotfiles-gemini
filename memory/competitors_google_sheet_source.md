@@ -1,3 +1,12 @@
+---
+id: mem-competitors-google-sheet-source
+brand: storeasy
+tier: L2_CONTRACT
+status: active
+valid_from: "2026-10-22"
+scope_repos: [Storeasyworkdivnew]
+---
+
 # 全台迷你倉競品資料庫唯一真相來源 (Competitors Single Source of Truth)
 
 - **Google Sheets 連結**：`https://docs.google.com/spreadsheets/d/1EFxL8vERajrjxBfc66xRqYSPjhhYwmW5KdoKgcjqZk0/edit?gid=1054685805#gid=1054685805`

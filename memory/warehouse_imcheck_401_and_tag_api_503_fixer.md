@@ -1,3 +1,12 @@
+---
+id: mem-warehouse-imcheck-401-and-tag-api-503-fixer
+brand: us3c
+tier: L2_ANTIPATTERN
+status: active
+valid_from: "2026-11-26"
+scope_repos: [iMCheck, us3c-next]
+---
+
 # [Fixer Post-Mortem] `/warehouse` 頁面 `imcheck-blacklist` 401 與 `api/hardware/tags` 503 根因與治理模式
 
 ## [Anti-Pattern 錯誤模式]

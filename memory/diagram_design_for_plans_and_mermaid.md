@@ -1,7 +1,16 @@
+---
+id: mem-diagram-design-for-plans-and-mermaid
+brand: shared-eng
+tier: L2_DECISION
+status: active
+valid_from: "2026-11-26"
+scope_repos: []
+---
+
 # [Correct-Pattern] 凡所有 repo 的 `README.md`、Plan 或文件涉及架構圖，強制調用 `/diagram-design` 並兼顧人機雙讀
 
 ## 📌 Context
-適用於所有專案（Storeasy 家族、US3C NEXT 家族及所有未來專案）與所有 AI 客戶端（Antigravity、Cursor、Gemini CLI、Codex、Claude）。
+適用於跨品牌所有工程專案與所有 AI 客戶端（Antigravity、Cursor、Gemini CLI、Codex、Claude）。
 
 ---
 
@@ -30,7 +39,7 @@
 3. **同步產出 `/diagram-design` Editorial HTML + SVG + `@2x` PNG**：
    - 選擇對應語義模式（如跨專案邊界與寫入風險用 **Secure Paved Road → Architecture**；跨系統同步用 **Sequence**）。
    - 遵守 6 大強制連線鐵律：正交圓角 `r=8`（禁斜線）、標籤白底遮罩距離線條 `6–10px`、零重疊連線、同邊端點分散 `>=12px`、最多 2 個珊瑚橘 (`#eb6c36`) 焦點、底部獨立水平圖例列。
-   - **內容強制繁體中文化**：除 Repo 檔名、資料表／欄位識別符 (`s_ino`, `quote_id` 等)、API 路徑與 Port 外，所有分區標題、節點名稱、連線標籤與圖例一律使用**繁體中文 (`12px` `Noto Sans TC`)**。
+   - **內容強制繁體中文化**：除 Repo 檔名、資料表／欄位識別符 (`store_id`, `quote_id` 等)、API 路徑與 Port 外，所有分區標題、節點名稱、連線標籤與圖例一律使用**繁體中文 (`12px` `Noto Sans TC`)**。
 4. **執行三重自動化驗證與破快取 PNG 渲染**：
    - 執行 `python C:\Users\Jiaxing\.gemini\config\skills\diagram-design\scripts\self_check.py <diagram.html>` 確保 `OK`。
    - 執行 `python C:\Users\Jiaxing\.gemini\config\skills\diagram-design\scripts\verify-geometry.py <diagram.html>` 確保無標籤遮罩被後畫節點裁切。

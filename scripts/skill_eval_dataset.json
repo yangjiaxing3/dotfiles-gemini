@@ -404,6 +404,20 @@
       "expected_skills": ["agency-data-consolidation-agent", "spreadsheet-reconciliation"],
       "acceptable_skills": ["storeasy-mini-warehouse-viz", "graphify", "diagram-design"],
       "forbidden_skills": ["tdd-workflow", "stageshow", "us3c-seo-loop"]
+    },
+    {
+      "id": "Q55",
+      "split": "test",
+      "query": "審計新版 multi-agent-mode 流程與技能路由管線中的結構矛盾、模型降級與門禁盲區",
+      "files": [
+        "scripts/skill_router.py",
+        "scripts/multi_model_gate.py",
+        "scripts/skill_eval_dataset.json",
+        ".agent/workflows/multi-agent-mode.md"
+      ],
+      "expected_skills": ["multi-agent-mode", "security-audit"],
+      "acceptable_skills": ["ponytail-audit", "ponytail-review", "bughunter", "us3c-swarm"],
+      "forbidden_skills": ["neural-training", "seo-workflow-rules", "gcp-data-pipelines"]
     }
   ]
 }

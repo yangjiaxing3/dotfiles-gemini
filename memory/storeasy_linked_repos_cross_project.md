@@ -1,3 +1,12 @@
+---
+id: mem-storeasy-linked-repos-cross-project
+brand: storeasy
+tier: L2_DECISION
+status: active
+valid_from: "2026-08-23"
+scope_repos: [StoreasyFMnew, storeasynewwebsite, storeasycws, STOREASY_IT, Storeasyworkdivnew, StoreasyFinHR, YangsDriver]
+---
+
 # [Correct-Pattern] Storeasy 聯動家族（7-Repo Nexus）：允許跨 repo 修改與驗證
 
 ## 📌 Context

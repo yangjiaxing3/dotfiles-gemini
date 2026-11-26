@@ -1,3 +1,12 @@
+---
+id: mem-nextjs-tailwind-v4-cache-antipattern
+brand: shared-eng
+tier: L2_ANTIPATTERN
+status: active
+valid_from: "2026-11-26"
+scope_repos: []
+---
+
 # [PatternExtract] Next.js 15 + Tailwind CSS v4 快取崩潰與樣式遺失陷阱 (Post-Mortem)
 
 ## 📌 Context

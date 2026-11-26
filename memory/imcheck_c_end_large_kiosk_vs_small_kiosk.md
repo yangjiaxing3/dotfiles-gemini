@@ -1,3 +1,12 @@
+---
+id: mem-imcheck-c-end-large-kiosk-vs-small-kiosk
+brand: us3c
+tier: L2_DECISION
+status: active
+valid_from: "2026-11-17"
+scope_repos: [Yangs-BizMarketing, iMCheck, us3c-next]
+---
+
 # [Correct-Pattern] iMCheck 對 C 端一律使用立式大機台 ＋ 單幕嚴禁雙標籤搶焦點
 
 ## Context

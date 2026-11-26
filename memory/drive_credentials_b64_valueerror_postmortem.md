@@ -1,3 +1,12 @@
+---
+id: mem-drive-credentials-b64-valueerror-postmortem
+brand: storeasy
+tier: L2_ANTIPATTERN
+status: active
+valid_from: "2026-11-26"
+scope_repos: [StoreasyFMnew]
+---
+
 # Drive GOOGLE_CREDENTIALS_B64 ValueError Regression (Post-Mortem)
 
 <PatternExtract>

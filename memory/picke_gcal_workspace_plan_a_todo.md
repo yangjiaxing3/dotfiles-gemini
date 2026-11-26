@@ -1,3 +1,12 @@
+---
+id: mem-picke-gcal-workspace-plan-a-todo
+brand: storeasy
+tier: L3_DRAFT
+status: draft
+valid_from: "2026-11-23"
+scope_repos: [StoreasyFMnew]
+---
+
 # PICKÉ+ Google 日曆雙向整合：方案 A 待辦與實作規格
 
 > 狀態：**[TODO - 等待 IT 申請帳號與憑證]**

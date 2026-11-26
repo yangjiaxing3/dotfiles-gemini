@@ -1,3 +1,12 @@
+---
+id: mem-us3c-linked-repos-and-incident-l-grades
+brand: us3c
+tier: L2_CONTRACT
+status: active
+valid_from: "2026-08-23"
+scope_repos: [us3c-next, us3cdriverapp]
+---
+
 # [Correct-Pattern] US3C 後台 ↔ DriverApp：異常單等級用 L1～L4，必須兩邊一起改
 
 ## 📌 Context

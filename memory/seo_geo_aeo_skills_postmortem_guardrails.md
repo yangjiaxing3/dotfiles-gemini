@@ -1,3 +1,12 @@
+---
+id: mem-seo-geo-aeo-skills-postmortem-guardrails
+brand: us3c
+tier: L2_ANTIPATTERN
+status: active
+valid_from: "2026-11-11"
+scope_repos: [us3cwebsite-env, iMCheck, us3c-next]
+---
+
 # SEO / GEO / AEO Skills 執行覆盤與避坑鐵律 (2026-11-11 Post-Mortem)
 
 > 適用於 `us3cwebsite-env`、`imcheck`、`storeasynewwebsite` 及所有執行 `seo-*`、`geo-content-optimizer`、`on-page-seo-auditor`、`technical-seo-checker`、`schema-markup-generator`、`stageshow` × `impeccable` 技能之專案。

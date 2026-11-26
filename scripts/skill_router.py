@@ -1102,6 +1102,14 @@ class SkillRouter:
                     ):
                         excluded_noise.append({"skill": s["name"], "reason": "context_excludes_reconciliation"})
                         continue
+                if s_name_l == "neural-training":
+                    q_and_files = q_lower + "\n" + "\n".join(merged_files).lower()
+                    if not re.search(
+                        r"\b(?:neural|sona|moe|ewc|pytorch|torch|tensorflow|lora|finetun\w*|fine-tun\w*|rlhf|q-learning|actor-critic)\b|神經網路|強化學習|微調模型|模型訓練",
+                        q_and_files,
+                    ):
+                        excluded_noise.append({"skill": s["name"], "reason": "context_excludes_neural_training"})
+                        continue
                 if file_signals["is_docs_only"] and not explicit_ui_or_seo:
                     if s_name_l in (FRONTEND_UI_SKILLS - {"diagram-design", "d3-data-visualization"}) or s_name_l in {"fastapi-templates", "tdd-workflow"}:
                         excluded_noise.append({"skill": s["name"], "reason": "docs_only_excludes_impl"})

@@ -29,7 +29,9 @@ UI_JSX_EXTS = frozenset({".tsx", ".jsx"})
 WEB_EXTS = frozenset({".tsx", ".jsx", ".html", ".vue"})
 PY_EXTS = frozenset({".py"})
 JS_EXTS = frozenset({".ts", ".tsx", ".js", ".jsx"})
+SECRET_SCAN_EXTS = frozenset({".md", ".yaml", ".yml"})
 RELEVANT_EXTS = UI_EMOJI_EXTS | UI_JSX_EXTS | WEB_EXTS | PY_EXTS | JS_EXTS
+ALL_SCANNED_EXTS = RELEVANT_EXTS | SECRET_SCAN_EXTS
 IGNORED_MIRROR_TOP_DIRS = frozenset({".agent", ".agents", ".cursor"})
 IGNORED_UNTRACKED_DIRS = frozenset(
     {
@@ -167,7 +169,34 @@ RULE_META: dict[str, tuple[str, str]] = {
         "shortcut 註解未包含有效上限條件與升級時機。",
         "補足 shortcut 註解格式為「shortcut: <上限條件(>=2字)>, <何時該升級>」。",
     ),
+    "PY_BOOL_STRING_COERCION": (
+        "對環境變數或字串參數直接呼叫 bool(...) 會將非空字串（含 \"false\" / \"0\"）一律轉為 True。",
+        "改用明確字串解析（例如 val.strip().lower() in (\"1\", \"true\", \"yes\")）。",
+    ),
+    "PY_OPEN_WITHOUT_UTF8": (
+        "文字模式檔案讀寫缺少 encoding=\"utf-8\"，在 Windows CP950 環境下容易發生編碼錯誤。",
+        "補上 encoding=\"utf-8\" 關鍵字參數（二進位模式如 \"rb\"/\"wb\" 除外）。",
+    ),
+    "SECRET_LITERAL_GUARD": (
+        "偵測到疑似明文私鑰或高危 API Token 字面量，禁止寫入程式碼或記憶檔。",
+        "立即移除明文密鑰，改由環境變數、Windows DPAPI 或佔位符（如 <API_KEY>）取代。",
+    ),
 }
+
+SECRET_SELF_SKIP_FILES = frozenset(
+    {"rule_lint.py", "tier_gate.py", "test_rule_lint.py", "test_tier_gate.py"}
+)
+SECRET_PLACEHOLDER_RE = re.compile(
+    r"(?:EXAMPLE|REDACTED|DUMMY|PLACEHOLDER|YOUR_|<[^>]+>|\*{4,}|x{6,})",
+    re.IGNORECASE,
+)
+SECRET_LITERAL_PATTERNS: tuple[re.Pattern[str], ...] = (
+    re.compile(r"-----BEGIN [A-Z0-9 ]*PRIVATE KEY-----"),
+    re.compile(r"\bgh[pousr]_[A-Za-z0-9_]{20,}\b"),
+    re.compile(r"\bsk-(?:proj-|ant-|live-|test-)?[A-Za-z0-9_-]{20,}\b"),
+    re.compile(r"\bAIzaSy[A-Za-z0-9_-]{25,}\b"),
+    re.compile(r"\beyJhbGci[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}\b"),
+)
 
 
 @dataclass(slots=True)
@@ -1037,6 +1066,152 @@ def _check_py_no_silent_catch(
     return violations
 
 
+def _is_bool_string_source(call_node: ast.Call) -> bool:
+    func = call_node.func
+    if not isinstance(func, ast.Attribute):
+        return False
+    if func.attr == "getenv" and isinstance(func.value, ast.Name) and func.value.id == "os":
+        return True
+    if func.attr == "get":
+        if (
+            isinstance(func.value, ast.Attribute)
+            and func.value.attr == "environ"
+            and isinstance(func.value.value, ast.Name)
+            and func.value.value.id == "os"
+        ):
+            return True
+        if isinstance(func.value, ast.Name) and func.value.id == "args":
+            return True
+    return False
+
+
+def _is_open_missing_utf8(call_node: ast.Call) -> bool:
+    if any(kw.arg == "encoding" or kw.arg is None for kw in call_node.keywords):
+        return False
+    func = call_node.func
+    if isinstance(func, ast.Attribute) and func.attr in ("read_text", "write_text"):
+        return True
+    is_builtin_open = isinstance(func, ast.Name) and func.id == "open"
+    is_io_open = (
+        isinstance(func, ast.Attribute)
+        and func.attr == "open"
+        and isinstance(func.value, ast.Name)
+        and func.value.id == "io"
+    )
+    is_path_open = (
+        isinstance(func, ast.Attribute)
+        and func.attr == "open"
+        and not is_io_open
+    )
+    if not (is_builtin_open or is_io_open or is_path_open):
+        return False
+    mode_node: ast.expr | None = None
+    if is_path_open:
+        # Path.open(mode='r', ...)：避開 Image.open(path) / webbrowser.open(url) 等非檔案模式參數
+        if len(call_node.args) >= 1:
+            first_arg = call_node.args[0]
+            if not (
+                isinstance(first_arg, ast.Constant)
+                and isinstance(first_arg.value, str)
+                and first_arg.value
+                and set(first_arg.value) <= set("rwxabt+U")
+            ):
+                return False
+            mode_node = first_arg
+        else:
+            for kw in call_node.keywords:
+                if kw.arg == "mode":
+                    mode_node = kw.value
+                    break
+    else:
+        mode_node = call_node.args[1] if len(call_node.args) >= 2 else None
+        if mode_node is None:
+            for kw in call_node.keywords:
+                if kw.arg == "mode":
+                    mode_node = kw.value
+                    break
+    if mode_node is not None:
+        if isinstance(mode_node, ast.Constant) and isinstance(mode_node.value, str):
+            if "b" in mode_node.value:
+                return False
+        else:
+            # 動態 mode 變數可能於執行期傳入二進位模式，避免誤導補上 encoding= 觸發 ValueError
+            return False
+    return True
+
+
+def _check_py_ast_safety_rules(
+    rel_path: str,
+    content: str,
+    lines: list[str],
+    added_lines: set[int] | None,
+) -> list[dict[str, Any]]:
+    try:
+        tree = ast.parse(content)
+    except SyntaxError:
+        return []
+    violations: list[dict[str, Any]] = []
+    for node in ast.walk(tree):
+        if not isinstance(node, ast.Call):
+            continue
+        end_line = getattr(node, "end_lineno", None) or node.lineno
+        if (
+            isinstance(node.func, ast.Name)
+            and node.func.id == "bool"
+            and len(node.args) == 1
+            and isinstance(node.args[0], ast.Call)
+            and _is_bool_string_source(node.args[0])
+        ):
+            report_line = _pick_report_line(node.lineno, end_line, added_lines)
+            if report_line is not None:
+                violations.append(
+                    _make_violation(
+                        "PY_BOOL_STRING_COERCION",
+                        rel_path,
+                        report_line,
+                        lines,
+                        severity="warning",
+                    )
+                )
+        elif _is_open_missing_utf8(node):
+            report_line = _pick_report_line(node.lineno, end_line, added_lines)
+            if report_line is not None:
+                violations.append(
+                    _make_violation(
+                        "PY_OPEN_WITHOUT_UTF8",
+                        rel_path,
+                        report_line,
+                        lines,
+                        severity="warning",
+                    )
+                )
+    return violations
+
+
+def _check_secret_literal_guard(
+    rel_path: str,
+    lines: list[str],
+    added_lines: set[int] | None,
+) -> list[dict[str, Any]]:
+    norm = _normalize_rel_path(rel_path)
+    name_low = norm.name.lower()
+    if name_low in SECRET_SELF_SKIP_FILES:
+        return []
+    parts_low = {p.lower() for p in norm.parts}
+    if _is_test_file(rel_path) and (parts_low & {"fixture", "fixtures", "mock", "mocks"}):
+        return []
+    violations: list[dict[str, Any]] = []
+    for idx, line_text in enumerate(lines, start=1):
+        if added_lines is not None and idx not in added_lines:
+            continue
+        for pat in SECRET_LITERAL_PATTERNS:
+            m = pat.search(line_text)
+            if m and not SECRET_PLACEHOLDER_RE.search(m.group(0)):
+                violations.append(_make_violation("SECRET_LITERAL_GUARD", rel_path, idx, lines))
+                break
+    return violations
+
+
 def _check_js_no_silent_catch(
     rel_path: str,
     scan: _JsScanResult,
@@ -1106,12 +1281,16 @@ def lint_file_content(
         return []
 
     ext = _normalize_rel_path(rel_path).suffix.lower()
-    if ext not in RELEVANT_EXTS:
+    if ext not in ALL_SCANNED_EXTS:
         return []
 
     is_test = _is_test_file(rel_path)
     lines = content.splitlines()
     violations: list[dict[str, Any]] = []
+    violations.extend(_check_secret_literal_guard(rel_path, lines, added_lines))
+    if ext not in RELEVANT_EXTS:
+        violations.sort(key=lambda v: (v["line"], v["rule_id"]))
+        return violations
 
     if ext in PY_EXTS:
         tokens = _tokenize_python_safe(content)
@@ -1120,6 +1299,7 @@ def lint_file_content(
         violations.extend(
             _check_py_no_silent_catch(rel_path, content, tokens, lines, added_lines)
         )
+        violations.extend(_check_py_ast_safety_rules(rel_path, content, lines, added_lines))
         py_comments = [
             (tok.start[0], tok.string) for tok in tokens if tok.type == tokenize.COMMENT
         ]
@@ -1357,7 +1537,7 @@ def _collect_untracked_files(
         rel_path_obj = _normalize_rel_path(rel_norm)
         if any(part in IGNORED_UNTRACKED_DIRS for part in rel_path_obj.parts):
             continue
-        if rel_path_obj.suffix.lower() not in RELEVANT_EXTS:
+        if rel_path_obj.suffix.lower() not in ALL_SCANNED_EXTS:
             continue
         if (repo_root / rel_path_obj).is_file():
             untracked.append(rel_norm)
@@ -1380,6 +1560,55 @@ def _format_text(report: dict[str, Any]) -> str:
             f"  ↳ 修復指引: {v['fix_hint']}"
         )
     return "\n".join(blocks)
+
+
+def _collect_tier_gate_summary(
+    repo_root: Path, *, staged: bool = False, commit: str | None = None
+) -> tuple[dict[str, Any] | None, str | None]:
+    """安全動態載入同目錄 tier_gate.py 的 assess_tier()；找不到或失敗時優雅略過。"""
+    tier_path = Path(__file__).resolve().parent / "tier_gate.py"
+    if not tier_path.is_file():
+        return None, None
+    try:
+        import importlib.util
+
+        mod_name = "tier_gate"
+        module = sys.modules.get(mod_name)
+        mod_file = getattr(module, "__file__", None) if module is not None else None
+        if module is None or not mod_file or Path(mod_file).resolve() != tier_path.resolve():
+            spec = importlib.util.spec_from_file_location(mod_name, str(tier_path))
+            if spec is None or spec.loader is None:
+                return None, None
+            module = importlib.util.module_from_spec(spec)
+            sys.modules[mod_name] = module
+            try:
+                spec.loader.exec_module(module)
+            except Exception:
+                sys.modules.pop(mod_name, None)
+                return None, None
+        assess_fn = getattr(module, "assess_tier", None)
+        if not callable(assess_fn):
+            return None, None
+        kwargs: dict[str, Any] = {"repo_root": repo_root, "git_diff": True, "staged": staged}
+        if commit:
+            kwargs["base"] = f"{commit}~1..{commit}"
+        res = assess_fn(**kwargs)
+        if not isinstance(res, dict):
+            return None, None
+        tier_token = str(res.get("tier_token") or res.get("required_tier") or "T0")
+        scale = str(res.get("scale_tier") or "S0")
+        risk = str(res.get("risk_tier") or "R0")
+        metrics = res.get("metrics") if isinstance(res.get("metrics"), dict) else {}
+        prod_churn = metrics.get("prod_churn", res.get("prod_churn", 0))
+        controlled = res.get("controlled_files") or []
+        summary_line = (
+            f"[TierGate] {tier_token} (S={scale}, R={risk}, "
+            f"prod_churn={prod_churn}, controlled={len(controlled)} files)"
+        )
+        return res, summary_line
+    except Exception:
+        # tier_gate 為輔助摘要，任一異常均優雅略過不影響 rule_lint 退出碼
+        return None, None
 
 
 def _configure_stdio_utf8() -> None:
@@ -1426,6 +1655,7 @@ def main(argv: list[str] | None = None) -> int:
     if args.staged and not args.git_diff:
         parser.error("--staged 必須搭配 --git-diff 使用")
 
+    tier_summary_line: str | None = None
     try:
         if args.git_diff:
             repo_root = Path(args.repo).resolve()
@@ -1453,6 +1683,20 @@ def main(argv: list[str] | None = None) -> int:
                     report = _build_report(
                         report["files_checked"] + extra_checked, all_violations
                     )
+            tier_info, tier_summary_line = _collect_tier_gate_summary(
+                repo_root, staged=bool(args.staged), commit=args.commit
+            )
+            if tier_info is not None:
+                report["tier_gate"] = {
+                    "tier_token": tier_info.get("tier_token"),
+                    "required_tier": tier_info.get("required_tier"),
+                    "scale_tier": tier_info.get("scale_tier"),
+                    "risk_tier": tier_info.get("risk_tier"),
+                    "prod_churn": (tier_info.get("metrics") or {}).get(
+                        "prod_churn", tier_info.get("prod_churn", 0)
+                    ),
+                    "controlled_count": len(tier_info.get("controlled_files") or []),
+                }
         elif args.files:
             all_violations: list[dict[str, Any]] = []
             files_checked = 0
@@ -1481,6 +1725,8 @@ def main(argv: list[str] | None = None) -> int:
         print(json.dumps(report, ensure_ascii=False, indent=2))
     else:
         print(_format_text(report))
+        if tier_summary_line:
+            print(tier_summary_line)
 
     return 1 if report["error_count"] > 0 else 0
 

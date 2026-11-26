@@ -1,3 +1,12 @@
+---
+id: mem-cad-slot-number-not-size
+brand: storeasy
+tier: L2_CONTRACT
+status: active
+valid_from: "2026-09-11"
+scope_repos: [STOREASY_IT, StoreasyFMnew]
+---
+
 # 倉位關聯只認號碼，不認尺寸
 
 - 日期：2026-09-11

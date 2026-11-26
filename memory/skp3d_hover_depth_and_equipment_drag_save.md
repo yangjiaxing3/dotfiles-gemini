@@ -1,3 +1,12 @@
+---
+id: mem-skp3d-hover-depth-and-equipment-drag-save
+brand: storeasy
+tier: L2_ANTIPATTERN
+status: active
+valid_from: "2026-11-26"
+scope_repos: [StoreasyFMnew, storeasynewwebsite]
+---
+
 # 3D Sitemap 1秒懸停對位、Drag-and-Drop 拖曳與 localStorage 持久化經驗萃取
 
 ## [Anti-Pattern 錯誤模式]

@@ -1,7 +1,16 @@
+---
+id: mem-windows-ultralytics-polars-thread-crash
+brand: shared-eng
+tier: L2_ANTIPATTERN
+status: active
+valid_from: "2026-11-17"
+scope_repos: []
+---
+
 # Windows 背景執行緒 Ultralytics × Polars Rayon Access Violation 解決方案
 
 - **Date**: 2026-11-17
-- **Context**: `YoloMono` (`Windows 11 + Python 3.12 + PyTorch CPU + ONNXRuntime + Ultralytics 8.4`)
+- **Context**: 本地視覺訓練服務（`Windows 11 + Python 3.12 + PyTorch CPU + ONNXRuntime + Ultralytics 8.4`）
 
 ## [Anti-Pattern 錯誤模式]
 - 在 Windows 同一個 Python 進程中，經過 `onnxruntime` / `OpenMP` 初始化並先後建立多條 `threading.Thread` 執行 `model.train()` 時，Ultralytics 於訓練收尾呼叫 `trainer.read_results_csv()` -> `polars.read_csv()` 會觸發 Polars Rust Rayon 預設多執行緒池初始化，極易發生原生 `Windows fatal exception: access violation`（非 Python `try/except` 可捕獲）。

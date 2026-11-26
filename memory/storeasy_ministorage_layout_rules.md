@@ -1,3 +1,12 @@
+---
+id: mem-storeasy-ministorage-layout-rules
+brand: storeasy
+tier: L2_DECISION
+status: active
+valid_from: "2026-10-17"
+scope_repos: [StoreasyFMnew, Storeasyworkdivnew]
+---
+
 # 收多易 (Storeasy) 迷你倉庫 CAD 排櫃、物料尺寸與倉位編號規範
 
 - 日期：2026-10-17

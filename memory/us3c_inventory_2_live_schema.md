@@ -1,3 +1,12 @@
+---
+id: mem-us3c-inventory-2-live-schema
+brand: us3c
+tier: L2_CONTRACT
+status: active
+valid_from: "2026-08-29"
+scope_repos: [us3c-next, us3cdriverapp]
+---
+
 # us3c 正式庫 inventory_2 欄位（2026-08-29）
 
 [Anti-Pattern 錯誤模式]

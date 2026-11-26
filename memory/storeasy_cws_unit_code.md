@@ -1,3 +1,12 @@
+---
+id: mem-storeasy-cws-unit-code
+brand: storeasy
+tier: L2_CONTRACT
+status: active
+valid_from: "2026-11-26"
+scope_repos: [StoreasyFMnew, storeasycws]
+---
+
 # Storeasy CWS 倉位號碼（跨專案記憶）
 
 權威：`StoreasyFMnew/docs/architecture/domain-identifier-contract.md` §6。  

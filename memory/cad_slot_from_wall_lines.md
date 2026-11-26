@@ -1,3 +1,12 @@
+---
+id: mem-cad-slot-from-wall-lines
+brand: storeasy
+tier: L2_ANTIPATTERN
+status: active
+valid_from: "2026-09-07"
+scope_repos: [STOREASY_IT]
+---
+
 # CAD 倉位必須用牆線矩形，不能用文字標籤框
 
 - 日期：2026-09-07

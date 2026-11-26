@@ -1,3 +1,12 @@
+---
+id: mem-cad-fill-must-lock-unique-polyline
+brand: storeasy
+tier: L2_ANTIPATTERN
+status: active
+valid_from: "2026-09-17"
+scope_repos: [STOREASY_IT]
+---
+
 # CAD 色塊必須鎖在唯一黑框上
 
 - 日期：2026-09-17
