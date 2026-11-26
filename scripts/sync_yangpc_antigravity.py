@@ -4,13 +4,13 @@
 
 支援兩種同步通道：
 1. GitHub 單一真相倉庫 (`https://github.com/yangjiaxing3/dotfiles-gemini.git` -> `~/.gemini`)
-2. Dropbox 即時同步映像 (`Dropbox/Projects/antigravity-global-sync/`)
+2. Dropbox 即時同步映像 (`Dropbox/Project2/antigravity-global-sync/`)
 
 在來源電腦 (Jiaxing PC) 執行：
     python C:\\Users\\Jiaxing\\.gemini\\scripts\\sync_yangpc_antigravity.py --export
 
 在目標電腦 (YangPC) 執行（任選其一）：
-    方式 A (Dropbox 一鍵安裝)：雙擊執行 `Dropbox\\Projects\\antigravity-global-sync\\sync_to_yangpc.bat`
+    方式 A (Dropbox 一鍵安裝)：雙擊執行 `Dropbox\\Project2\\antigravity-global-sync\\sync_to_yangpc.bat`
     方式 B (Git Pull + 套用)：
         git -C "$HOME\\.gemini" pull origin master
         python "$HOME\\.gemini\\scripts\\sync_yangpc_antigravity.py" --apply
@@ -347,7 +347,7 @@ def main() -> None:
     parser.add_argument(
         "--dropbox-dir",
         type=str,
-        default=str(HOME / "Dropbox" / "Projects" / "antigravity-global-sync"),
+        default=str(HOME / "Dropbox" / "Project2" / "antigravity-global-sync"),
         help="Dropbox target folder for --export",
     )
     args = parser.parse_args()
