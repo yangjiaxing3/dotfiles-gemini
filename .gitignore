@@ -25,6 +25,8 @@
 !memory/*.md
 !cursor-rules/
 !cursor-rules/*.mdc
+!templates/
+!templates/*.md
 
 # 5. Antigravity 全域工作流
 !antigravity/
